@@ -10,6 +10,7 @@ from player import Player
 def save_game(file_path: str, player: Player, inventory: Inventory, game_time: float) -> None:
     data: Dict[str, Any] = {
         "player_health": player.player_health,
+        "player_hunger": player.player_hunger,
         "player_position": list(player.player_position),
         "inventory": inventory.to_dict(),
         "game_time": game_time,
