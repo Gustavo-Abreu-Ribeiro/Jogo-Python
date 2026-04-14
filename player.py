@@ -9,7 +9,7 @@ from weapons import WEAPONS
 
 class Player:
     def __init__(self, position: Tuple[float, float]) -> None:
-        # Estruturas obrigatorias
+       
         self.max_health: int = 100
         self.max_hunger: float = 100.0
         self.player_health: int = 100

@@ -5,7 +5,7 @@ from typing import Dict
 
 class Inventory:
     def __init__(self, initial: Dict[str, int] | None = None) -> None:
-        # Estrutura obrigatoria: dict
+
         defaults = {
             "madeira": 0,
             "metal": 0,

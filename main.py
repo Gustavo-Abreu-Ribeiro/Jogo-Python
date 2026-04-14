@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 import random
 from typing import Dict, List, Tuple
 
@@ -79,51 +80,237 @@ STATION_TYPES: Dict[str, Dict[str, object]] = {
     "fogueira": {"label": "Fogueira", "color": (216, 132, 81)},
 }
 
+OBJECT_SPRITE_ROOT = Path(__file__).resolve().parent / "sprites" / "objects"
+_RAW_SPRITE_CACHE: Dict[str, pygame.Surface] = {}
+_SCALED_SPRITE_CACHE: Dict[Tuple[str, float], pygame.Surface] = {}
+_COMPOSITE_SPRITE_CACHE: Dict[Tuple[str, str, str, str, float], pygame.Surface] = {}
+
+DECOR_VARIANTS: Dict[str, List[Dict[str, object]]] = {
+    "tree": [
+        {"path": "Nature/Green/Tree_5_Big_Green.png", "scale": 2.35},
+        {"path": "Nature/Green/Tree_3_Normal_Green.png", "scale": 2.15},
+        {"path": "Nature/Dark-Green/Tree_1_Spruce_Dark-Green.png", "scale": 2.2},
+        {"path": "Nature/Dark-Green/Tree_9_Small-oak_Dark-Green.png", "scale": 2.0},
+    ],
+    "bush": [
+        {"path": "Nature/Green/Bush_1_Green.png", "scale": 2.3},
+        {"path": "Nature/Green/Bush_2_Green.png", "scale": 2.2},
+        {"path": "Nature/Dark-Green/Bush_1_Dark-Green.png", "scale": 2.25},
+        {"path": "Nature/Dark-Green/Bush_2_Dark-Green.png", "scale": 2.15},
+    ],
+    "rock": [
+        {"path": "Nature/Flowers_Mashrooms_Other-nature-stuff/Rocks/Rock_4.png", "scale": 2.0},
+        {"path": "Nature/Flowers_Mashrooms_Other-nature-stuff/Rocks/Rock_6.png", "scale": 1.9},
+        {"path": "Nature/Dark-Green/Rocks/Rock-grass_Dark-Green.png", "scale": 2.0},
+    ],
+    "vehicle": [
+        {"path": "Vehicles/Rust/Car_3_Rust_Van/Car_3_Rust_Blue_Van.png", "scale": 2.0},
+        {"path": "Vehicles/Rust/Car_6_Rust_Scrap/Car_6_Rust_Blue_Scrap.png", "scale": 2.2},
+        {"path": "Vehicles/Rust/Car_4_Rust/Car_4_Rust_Orange.png", "scale": 2.0},
+    ],
+    "container": [
+        {"path": "Container/Container_7_Red_Horizontal.png", "scale": 1.95},
+        {"path": "Container/Container_3_Gray_Horizontal.png", "scale": 1.95},
+        {"path": "Container/Container_1_Gray_Vertical.png", "scale": 1.55},
+    ],
+    "street_light": [
+        {"path": "Street-Light_3_Down.png", "scale": 2.0},
+        {"path": "Street-Light_6_Down_Overgrown_Green.png", "scale": 2.0},
+    ],
+}
+
+DECOR_DRAW_STYLE: Dict[str, Dict[str, float]] = {
+    "tree": {"shadow_w": 0.36, "shadow_h": 0.1, "ground_offset": 10},
+    "bush": {"shadow_w": 0.58, "shadow_h": 0.16, "ground_offset": 7},
+    "rock": {"shadow_w": 0.54, "shadow_h": 0.15, "ground_offset": 5},
+    "vehicle": {"shadow_w": 0.72, "shadow_h": 0.13, "ground_offset": 8},
+    "container": {"shadow_w": 0.74, "shadow_h": 0.12, "ground_offset": 8},
+    "street_light": {"shadow_w": 0.34, "shadow_h": 0.08, "ground_offset": 6},
+    "building": {"shadow_w": 0.78, "shadow_h": 0.12, "ground_offset": 10},
+}
+
+BUILDING_VARIANTS: List[Dict[str, object]] = [
+    {
+        "entrance": "Buildings/Enterance_Green.png",
+        "awning": "Buildings/Awning_orange_3.png",
+        "window": "Windows/Window_16_Beige.png",
+        "poster": "Buildings/layered-posters_1_For-ground-and-walls.png",
+        "scale": 2.45,
+    },
+    {
+        "entrance": "Buildings/Enterance_Dark-Green.png",
+        "awning": "Buildings/Awning_blue_4.png",
+        "window": "Windows/Window_19_gray.png",
+        "poster": "Buildings/layered-posters_2_For-ground-and-walls.png",
+        "scale": 2.4,
+    },
+    {
+        "entrance": "Buildings/Enterance_Bleak-Yellow.png",
+        "awning": "Buildings/Awning_orange_2.png",
+        "window": "Windows/Window_18_Boarded-up_Beige.png",
+        "poster": "Buildings/layered-posters_1_For-ground-and-walls.png",
+        "scale": 2.4,
+    },
+]
+
+NODE_SPRITES: Dict[str, List[Dict[str, object]]] = {
+    "caixote": [
+        {"path": "Cardboard_1.png", "scale": 2.7},
+        {"path": "Cardboard_2.png", "scale": 2.55},
+    ],
+    "sucata": [
+        {"path": "Barrel_rust_blue_1.png", "scale": 2.2},
+        {"path": "Barrel_rust_red_1.png", "scale": 2.2},
+        {"path": "Vehicles/Rust/Car_6_Rust_Scrap/Car_6_Rust_Blue_Scrap.png", "scale": 1.7},
+    ],
+    "despensa": [
+        {"path": "Shopping-cart.png", "scale": 2.4},
+        {"path": "Garbage-Bin_1.png", "scale": 1.7},
+        {"path": "Garbage-Bin_2.png", "scale": 1.85},
+    ],
+    "erva": [
+        {"path": "Nature/Green/Bush_1_Green.png", "scale": 2.0},
+        {"path": "Nature/Green/Grass_4_Green.png", "scale": 2.1},
+        {"path": "Nature/Dark-Green/Bush_2_Dark-Green.png", "scale": 1.95},
+    ],
+    "arsenal": [
+        {"path": "Pickable/Ammo-crate_Blue.png", "scale": 3.0},
+        {"path": "Pickable/Ammo-crate_Green.png", "scale": 3.0},
+        {"path": "Pickable/Ammo-crate_Red.png", "scale": 3.0},
+    ],
+}
+
+
+def _load_raw_sprite(relative_path: str) -> pygame.Surface:
+    cached = _RAW_SPRITE_CACHE.get(relative_path)
+    if cached is not None:
+        return cached
+
+    sprite = pygame.image.load(str(OBJECT_SPRITE_ROOT / relative_path)).convert_alpha()
+    _RAW_SPRITE_CACHE[relative_path] = sprite
+    return sprite
+
+
+def _load_scaled_sprite(relative_path: str, scale: float = 1.0) -> pygame.Surface:
+    normalized_scale = round(scale, 2)
+    cache_key = (relative_path, normalized_scale)
+    cached = _SCALED_SPRITE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    sprite = _load_raw_sprite(relative_path)
+    width = max(1, int(round(sprite.get_width() * normalized_scale)))
+    height = max(1, int(round(sprite.get_height() * normalized_scale)))
+    if (width, height) != sprite.get_size():
+        sprite = pygame.transform.scale(sprite, (width, height))
+    _SCALED_SPRITE_CACHE[cache_key] = sprite
+    return sprite
+
+
+def _build_facade_sprite(
+    entrance_path: str,
+    awning_path: str,
+    window_path: str,
+    poster_path: str,
+    scale: float,
+) -> pygame.Surface:
+    normalized_scale = round(scale, 2)
+    cache_key = (entrance_path, awning_path, window_path, poster_path, normalized_scale)
+    cached = _COMPOSITE_SPRITE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    entrance = _load_raw_sprite(entrance_path)
+    awning = _load_raw_sprite(awning_path)
+    window = _load_raw_sprite(window_path)
+    poster = _load_raw_sprite(poster_path)
+
+    width = max(awning.get_width() + 20, entrance.get_width() + (window.get_width() * 2) + 22)
+    height = awning.get_height() + entrance.get_height() + 18
+    facade = pygame.Surface((width, height), pygame.SRCALPHA)
+
+    awning_x = (width - awning.get_width()) // 2
+    body_y = awning.get_height() - 3
+    entrance_x = (width - entrance.get_width()) // 2
+    window_y = body_y + 9
+
+    facade.blit(awning, (awning_x, 0))
+    facade.blit(window, (entrance_x - window.get_width() - 6, window_y))
+    facade.blit(window, (entrance_x + entrance.get_width() + 6, window_y))
+    facade.blit(entrance, (entrance_x, body_y + 4))
+    facade.blit(poster, (6, body_y + 14))
+
+    if normalized_scale != 1.0:
+        facade = pygame.transform.scale(
+            facade,
+            (
+                max(1, int(round(facade.get_width() * normalized_scale))),
+                max(1, int(round(facade.get_height() * normalized_scale))),
+            ),
+        )
+    _COMPOSITE_SPRITE_CACHE[cache_key] = facade
+    return facade
+
+
+def _make_shadow(size: Tuple[int, int], alpha: int = 110) -> pygame.Surface:
+    shadow = pygame.Surface(size, pygame.SRCALPHA)
+    pygame.draw.ellipse(shadow, (18, 22, 24, alpha), shadow.get_rect())
+    return shadow
+
+
+def _dim_sprite(sprite: pygame.Surface) -> pygame.Surface:
+    dimmed = sprite.copy()
+    dimmed.fill((125, 125, 125, 255), special_flags=pygame.BLEND_RGBA_MULT)
+    return dimmed
+
 
 class Decoration:
     def __init__(self, decor_type: str, position: Tuple[int, int], scale: float = 1.0) -> None:
         self.decor_type = decor_type
         self.position = pygame.Vector2(position)
         self.scale = scale
+        self.sprite = self._create_sprite()
+        style = DECOR_DRAW_STYLE[self.decor_type]
+        self._ground_offset = int(style["ground_offset"] * self.scale)
+        self._shadow = _make_shadow(
+            (
+                max(12, int(self.sprite.get_width() * style["shadow_w"])),
+                max(6, int(self.sprite.get_height() * style["shadow_h"])),
+            )
+        )
+
+    def _create_sprite(self) -> pygame.Surface:
+        if self.decor_type == "building":
+            variant = random.choice(BUILDING_VARIANTS)
+            return _build_facade_sprite(
+                str(variant["entrance"]),
+                str(variant["awning"]),
+                str(variant["window"]),
+                str(variant["poster"]),
+                float(variant["scale"]) * self.scale,
+            )
+
+        variant = random.choice(DECOR_VARIANTS[self.decor_type])
+        return _load_scaled_sprite(str(variant["path"]), float(variant["scale"]) * self.scale)
 
     def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2) -> None:
         draw_pos = self.position - camera_offset
-        if self.decor_type == "tree":
-            trunk_rect = pygame.Rect(0, 0, int(12 * self.scale), int(22 * self.scale))
-            trunk_rect.midbottom = (draw_pos.x, draw_pos.y + 12 * self.scale)
-            pygame.draw.ellipse(surface, PALETTE["bg_deep"], trunk_rect.move(2, 3))
-            pygame.draw.rect(surface, (104, 78, 56), trunk_rect, border_radius=4)
-
-            leaf_colors = [(74, 116, 74), (92, 139, 92), (118, 156, 104)]
-            leaf_offsets = [(-12, -6), (10, -8), (0, -18)]
-            for color, (off_x, off_y) in zip(leaf_colors, leaf_offsets):
-                pygame.draw.circle(
-                    surface,
-                    color,
-                    draw_pos + pygame.Vector2(off_x * self.scale, off_y * self.scale),
-                    int(14 * self.scale),
-                )
-        elif self.decor_type == "rock":
-            points = [
-                draw_pos + pygame.Vector2(-12, 8) * self.scale,
-                draw_pos + pygame.Vector2(-8, -8) * self.scale,
-                draw_pos + pygame.Vector2(6, -10) * self.scale,
-                draw_pos + pygame.Vector2(14, 2) * self.scale,
-                draw_pos + pygame.Vector2(8, 12) * self.scale,
-                draw_pos + pygame.Vector2(-6, 14) * self.scale,
-            ]
-            pygame.draw.polygon(surface, PALETTE["bg_deep"], [point + pygame.Vector2(2, 3) for point in points])
-            pygame.draw.polygon(surface, (108, 118, 119), points)
-            pygame.draw.polygon(surface, (138, 148, 148), points[:4])
-        else:
-            pygame.draw.circle(surface, (92, 149, 96), draw_pos, int(10 * self.scale))
+        sprite_rect = self.sprite.get_rect(
+            midbottom=(round(draw_pos.x), round(draw_pos.y + self._ground_offset))
+        )
+        shadow_rect = self._shadow.get_rect(center=(sprite_rect.centerx + 3, sprite_rect.bottom - 4))
+        surface.blit(self._shadow, shadow_rect)
+        surface.blit(self.sprite, sprite_rect)
 
 
 class SearchNode:
     def __init__(self, node_type: str, position: Tuple[int, int]) -> None:
         self.node_type = node_type
         self.position = pygame.Vector2(position)
-        self.radius = 18
+        variant = random.choice(NODE_SPRITES[self.node_type])
+        self._sprite = _load_scaled_sprite(str(variant["path"]), float(variant["scale"]))
+        self._searched_sprite = _dim_sprite(self._sprite)
+        self.radius = max(18, int(max(self._sprite.get_width(), self._sprite.get_height()) * 0.42))
         self.searched = False
 
     def search(self) -> Tuple[Dict[str, int], int]:
@@ -146,46 +333,24 @@ class SearchNode:
 
     def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2) -> None:
         draw_pos = self.position - camera_offset
-        node_data = NODE_TYPES[self.node_type]
-        color = node_data["color"]
-        if self.searched:
-            color = tuple(max(40, channel // 2) for channel in color)
-
-        shadow_pos = draw_pos + pygame.Vector2(2, 3)
-        if self.node_type == "caixote":
-            rect = pygame.Rect(0, 0, 28, 24)
-            rect.center = draw_pos
-            pygame.draw.rect(surface, PALETTE["bg_deep"], rect.move(2, 3), border_radius=4)
-            pygame.draw.rect(surface, color, rect, border_radius=4)
-            pygame.draw.line(surface, (101, 72, 48), rect.midtop, rect.midbottom, 2)
-            pygame.draw.line(surface, (101, 72, 48), rect.midleft, rect.midright, 2)
-        elif self.node_type == "sucata":
-            points = [draw_pos + pygame.Vector2(-16, 8), draw_pos + pygame.Vector2(-10, -8), draw_pos + pygame.Vector2(5, -10), draw_pos + pygame.Vector2(16, 6), draw_pos + pygame.Vector2(2, 14)]
-            pygame.draw.polygon(surface, PALETTE["bg_deep"], [point + pygame.Vector2(2, 3) for point in points])
-            pygame.draw.polygon(surface, color, points)
-            pygame.draw.line(surface, (160, 168, 171), points[0], points[2], 2)
-        elif self.node_type == "despensa":
-            rect = pygame.Rect(0, 0, 24, 28)
-            rect.center = draw_pos
-            pygame.draw.rect(surface, PALETTE["bg_deep"], rect.move(2, 3), border_radius=6)
-            pygame.draw.rect(surface, color, rect, border_radius=6)
-            pygame.draw.rect(surface, (214, 190, 163), rect.inflate(-10, -12).move(0, -2), border_radius=4)
-        elif self.node_type == "erva":
-            pygame.draw.circle(surface, PALETTE["bg_deep"], shadow_pos, self.radius)
-            for angle in (-40, -15, 10, 35):
-                tip = draw_pos + pygame.Vector2(0, -16).rotate(angle)
-                base_left = draw_pos + pygame.Vector2(-3, 8)
-                base_right = draw_pos + pygame.Vector2(3, 8)
-                pygame.draw.polygon(surface, color, [base_left, tip, base_right])
-        else:
-            pygame.draw.circle(surface, PALETTE["bg_deep"], shadow_pos, self.radius)
-            pygame.draw.circle(surface, color, draw_pos, self.radius)
-            pygame.draw.rect(surface, (110, 90, 64), pygame.Rect(draw_pos.x - 12, draw_pos.y - 3, 24, 8), border_radius=3)
+        sprite = self._searched_sprite if self.searched else self._sprite
+        sprite_rect = sprite.get_rect(midbottom=(round(draw_pos.x), round(draw_pos.y + 8)))
+        shadow = _make_shadow(
+            (
+                max(10, int(sprite_rect.width * 0.62)),
+                max(5, int(sprite_rect.height * 0.18)),
+            ),
+            alpha=105,
+        )
+        shadow_rect = shadow.get_rect(center=(sprite_rect.centerx + 2, sprite_rect.bottom - 3))
+        surface.blit(shadow, shadow_rect)
+        surface.blit(sprite, sprite_rect)
 
         if not self.searched:
-            pygame.draw.circle(surface, PALETTE["accent"], draw_pos, self.radius + 4, 1)
+            pygame.draw.circle(surface, PALETTE["accent"], sprite_rect.center, self.radius + 4, 1)
         if self.searched:
-            pygame.draw.line(surface, PALETTE["text"], draw_pos + (-8, -8), draw_pos + (8, 8), 2)
+            center = pygame.Vector2(sprite_rect.center)
+            pygame.draw.line(surface, PALETTE["text"], center + (-8, -8), center + (8, 8), 2)
 
 
 class Station:
@@ -287,14 +452,32 @@ class Game:
         for _ in range(28):
             self.nodes.append(SearchNode(random.choice(node_pool), self._random_world_position()))
 
-        for _ in range(44):
-            decor_type = "tree" if random.random() < 0.7 else "rock"
-            decor_pos = self._random_world_position(80)
-            if pygame.Vector2(decor_pos).distance_to(self._base_position) > SAFE_ZONE_RADIUS + 90:
-                self.decorations.append(Decoration(decor_type, decor_pos, random.uniform(0.85, 1.25)))
+        self._populate_decorations()
 
         for _ in range(6):
             self._spawn_zombie()
+
+    def _populate_decorations(self) -> None:
+        decor_plan = [
+            ("tree", 20, 130, SAFE_ZONE_RADIUS + 120, (0.95, 1.0, 1.08, 1.16)),
+            ("bush", 16, 110, SAFE_ZONE_RADIUS + 90, (0.9, 1.0, 1.08)),
+            ("rock", 10, 100, SAFE_ZONE_RADIUS + 85, (0.9, 1.0, 1.1)),
+            ("vehicle", 7, 180, SAFE_ZONE_RADIUS + 150, (0.95, 1.0, 1.05)),
+            ("container", 5, 180, SAFE_ZONE_RADIUS + 160, (0.95, 1.0)),
+            ("building", 5, 220, SAFE_ZONE_RADIUS + 200, (0.95, 1.0, 1.05)),
+            ("street_light", 8, 120, SAFE_ZONE_RADIUS + 100, (1.0, 1.1)),
+        ]
+
+        for decor_type, count, margin, safe_distance, scale_choices in decor_plan:
+            placed = 0
+            attempts = 0
+            while placed < count and attempts < count * 16:
+                decor_pos = self._random_world_position(margin)
+                attempts += 1
+                if pygame.Vector2(decor_pos).distance_to(self._base_position) <= safe_distance:
+                    continue
+                self.decorations.append(Decoration(decor_type, decor_pos, random.choice(scale_choices)))
+                placed += 1
 
     def _random_world_position(self, margin: int = 120) -> Tuple[int, int]:
         return (
@@ -592,19 +775,20 @@ class Game:
         self.screen.fill(BG_COLOR)
         self._draw_ground()
 
+        world_drawables: List[Tuple[float, int, object]] = []
         for decoration in self.decorations:
-            decoration.draw(self.screen, self._camera)
-
+            world_drawables.append((decoration.position.y, 0, decoration))
         for station in self.stations:
-            station.draw(self.screen, self._camera)
-
+            world_drawables.append((station.position.y, 1, station))
         for node in self.nodes:
-            node.draw(self.screen, self._camera)
-
+            world_drawables.append((node.position.y, 2, node))
         for zombie in self.zombies:
-            zombie.draw(self.screen, self._camera)
+            world_drawables.append((zombie.position.y, 3, zombie))
+        world_drawables.append((self.player.player_position[1], 4, self.player))
 
-        self.player.draw(self.screen, self._camera)
+        for _, _, drawable in sorted(world_drawables, key=lambda item: (item[0], item[1])):
+            drawable.draw(self.screen, self._camera)
+
         self._draw_crosshair()
         self._draw_prompt()
         self._draw_ui()

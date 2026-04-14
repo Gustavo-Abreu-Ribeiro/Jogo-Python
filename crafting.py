@@ -6,7 +6,7 @@ from inventory import Inventory
 
 
 class CraftingSystem:
-    # Estrutura obrigatoria: dict
+
     crafting_recipes: Dict[str, Dict[str, object]] = {
         "lanca": {"cost": {"madeira": 4, "metal": 2}, "station": "bancada"},
         "machado": {"cost": {"madeira": 3, "metal": 2}, "station": "bancada"},
