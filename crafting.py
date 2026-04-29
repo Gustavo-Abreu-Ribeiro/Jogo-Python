@@ -8,9 +8,8 @@ from inventory import Inventory
 class CraftingSystem:
 
     crafting_recipes: Dict[str, Dict[str, object]] = {
-        "lanca": {"cost": {"madeira": 4, "metal": 2}, "station": "bancada"},
-        "machado": {"cost": {"madeira": 3, "metal": 2}, "station": "bancada"},
-        "espada": {"cost": {"metal": 4, "pano": 1}, "station": "bancada"},
+        "taco": {"cost": {"madeira": 3}, "station": "bancada"},
+        "balas": {"cost": {"metal": 1, "polvora": 1}, "station": "bancada", "amount": 6},
         "kit_medico": {"cost": {"pano": 2, "erva": 2}, "station": "fogueira"},
     }
 
@@ -31,8 +30,10 @@ class CraftingSystem:
         for item, amount in recipe_cost.items():
             inventory.remove_item(item, amount)
 
-        inventory.add_item(item_name, 1)
-        return True, f"Criado: {item_name}."
+        amount = int(recipe.get("amount", 1))
+        inventory.add_item(item_name, amount)
+        suffix = f" x{amount}" if amount > 1 else ""
+        return True, f"Criado: {item_name}{suffix}."
 
     def get_recipe_names(self) -> List[str]:
         return list(self.crafting_recipes.keys())

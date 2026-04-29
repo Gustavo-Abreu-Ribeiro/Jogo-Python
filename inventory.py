@@ -13,13 +13,18 @@ class Inventory:
             "pano": 0,
             "erva": 0,
             "kit_medico": 0,
-            "lanca": 1,
-            "machado": 0,
-            "espada": 0,
+            "polvora": 0,
+            "balas": 0,
+            "maos": 1,
+            "taco": 0,
+            "pistola": 0,
+            "escopeta": 0,
         }
         self.inventory: Dict[str, int] = defaults
         if initial:
             self.inventory.update(initial)
+            if "municao" in initial and "balas" not in initial:
+                self.inventory["balas"] = int(initial["municao"])
 
     def add_item(self, item: str, amount: int = 1) -> None:
         if amount <= 0:

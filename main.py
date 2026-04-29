@@ -41,14 +41,21 @@ NODE_TYPES: Dict[str, Dict[str, object]] = {
     "caixote": {
         "label": "Caixote",
         "color": (155, 111, 69),
-        "loot": ["madeira", "madeira", "metal", "pano"],
+        "loot": ["metal", "pano", "comida"],
         "drops": (2, 4),
         "ambush": 0.15,
+    },
+    "arvore": {
+        "label": "Arvore",
+        "color": (92, 149, 96),
+        "loot": ["madeira", "madeira", "madeira", "pano"],
+        "drops": (2, 4),
+        "ambush": 0.05,
     },
     "sucata": {
         "label": "Monte de Sucata",
         "color": (116, 126, 129),
-        "loot": ["metal", "metal", "madeira", "pano"],
+        "loot": ["metal", "metal", "pano", "polvora"],
         "drops": (2, 4),
         "ambush": 0.25,
     },
@@ -66,11 +73,18 @@ NODE_TYPES: Dict[str, Dict[str, object]] = {
         "drops": (2, 3),
         "ambush": 0.05,
     },
-    "arsenal": {
-        "label": "Arsenal",
+    "carro": {
+        "label": "Carro abandonado",
+        "color": (120, 132, 138),
+        "loot": ["metal", "metal", "balas", "pistola", "polvora"],
+        "drops": (2, 4),
+        "ambush": 0.25,
+    },
+    "edificio": {
+        "label": "Predio abandonado",
         "color": (155, 142, 91),
-        "loot": ["metal", "pano", "lanca", "machado", "espada"],
-        "drops": (1, 2),
+        "loot": ["pano", "balas", "polvora", "pistola", "escopeta"],
+        "drops": (2, 4),
         "ambush": 0.35,
     },
 }
@@ -81,9 +95,17 @@ STATION_TYPES: Dict[str, Dict[str, object]] = {
 }
 
 OBJECT_SPRITE_ROOT = Path(__file__).resolve().parent / "sprites" / "objects"
+SHOT_SPRITE_ROOT = Path(__file__).resolve().parent / "sprites" / "Shot"
 _RAW_SPRITE_CACHE: Dict[str, pygame.Surface] = {}
 _SCALED_SPRITE_CACHE: Dict[Tuple[str, float], pygame.Surface] = {}
 _COMPOSITE_SPRITE_CACHE: Dict[Tuple[str, str, str, str, float], pygame.Surface] = {}
+_SHOT_IMPACT_CACHE: List[List[pygame.Surface]] | None = None
+
+ZOMBIE_VARIANTS: Dict[str, Dict[str, float | int]] = {
+    "axe": {"weight": 7, "speed": 1.0, "health": 1.0, "radius": 12},
+    "small": {"weight": 4, "speed": 1.68, "health": 0.72, "radius": 10},
+    "big": {"weight": 3, "speed": 0.66, "health": 1.95, "radius": 18},
+}
 
 DECOR_VARIANTS: Dict[str, List[Dict[str, object]]] = {
     "tree": [
@@ -158,6 +180,11 @@ NODE_SPRITES: Dict[str, List[Dict[str, object]]] = {
         {"path": "Cardboard_1.png", "scale": 2.7},
         {"path": "Cardboard_2.png", "scale": 2.55},
     ],
+    "arvore": [
+        {"path": "Nature/Green/Tree_5_Big_Green.png", "scale": 1.7},
+        {"path": "Nature/Green/Tree_3_Normal_Green.png", "scale": 1.6},
+        {"path": "Nature/Dark-Green/Tree_1_Spruce_Dark-Green.png", "scale": 1.65},
+    ],
     "sucata": [
         {"path": "Barrel_rust_blue_1.png", "scale": 2.2},
         {"path": "Barrel_rust_red_1.png", "scale": 2.2},
@@ -173,10 +200,15 @@ NODE_SPRITES: Dict[str, List[Dict[str, object]]] = {
         {"path": "Nature/Green/Grass_4_Green.png", "scale": 2.1},
         {"path": "Nature/Dark-Green/Bush_2_Dark-Green.png", "scale": 1.95},
     ],
-    "arsenal": [
-        {"path": "Pickable/Ammo-crate_Blue.png", "scale": 3.0},
-        {"path": "Pickable/Ammo-crate_Green.png", "scale": 3.0},
-        {"path": "Pickable/Ammo-crate_Red.png", "scale": 3.0},
+    "carro": [
+        {"path": "Vehicles/Rust/Car_3_Rust_Van/Car_3_Rust_Blue_Van.png", "scale": 1.7},
+        {"path": "Vehicles/Rust/Car_6_Rust_Scrap/Car_6_Rust_Blue_Scrap.png", "scale": 1.75},
+        {"path": "Vehicles/Rust/Car_4_Rust/Car_4_Rust_Orange.png", "scale": 1.7},
+    ],
+    "edificio": [
+        {"path": "Buildings/Enterance_Green.png", "scale": 2.8},
+        {"path": "Buildings/Enterance_Dark-Green.png", "scale": 2.8},
+        {"path": "Buildings/Enterance_Bleak-Yellow.png", "scale": 2.8},
     ],
 }
 
@@ -262,6 +294,27 @@ def _dim_sprite(sprite: pygame.Surface) -> pygame.Surface:
     dimmed = sprite.copy()
     dimmed.fill((125, 125, 125, 255), special_flags=pygame.BLEND_RGBA_MULT)
     return dimmed
+
+
+def _load_shot_impact_frames() -> List[pygame.Surface]:
+    global _SHOT_IMPACT_CACHE
+    if _SHOT_IMPACT_CACHE is not None:
+        return random.choice(_SHOT_IMPACT_CACHE)
+
+    frame_count = 3
+    variants: List[List[pygame.Surface]] = []
+    for spritesheet_path in [SHOT_SPRITE_ROOT / "shot_1-Sheet3.png", SHOT_SPRITE_ROOT / "shot_2-Sheet3.png"]:
+        sheet = pygame.image.load(str(spritesheet_path)).convert_alpha()
+        frame_width = sheet.get_width() // frame_count
+        frame_height = sheet.get_height()
+        frames: List[pygame.Surface] = []
+        for frame_index in range(frame_count):
+            frame = pygame.Surface((frame_width, frame_height), pygame.SRCALPHA)
+            frame.blit(sheet, (0, 0), pygame.Rect(frame_index * frame_width, 0, frame_width, frame_height))
+            frames.append(pygame.transform.scale(frame, (frame_width * 3, frame_height * 3)))
+        variants.append(frames)
+    _SHOT_IMPACT_CACHE = variants
+    return random.choice(_SHOT_IMPACT_CACHE)
 
 
 class Decoration:
@@ -382,6 +435,26 @@ class Station:
                 pygame.draw.circle(surface, flame_color, draw_pos + pygame.Vector2(flame_offset), flame_size)
 
 
+class ShotImpact:
+    def __init__(self, position: Tuple[float, float] | pygame.Vector2) -> None:
+        self.position = pygame.Vector2(position)
+        self.animation_time = 0.0
+        self.frames = _load_shot_impact_frames()
+        self.fps = 18.0
+
+    def update(self, dt: float) -> None:
+        self.animation_time += dt * self.fps
+
+    def is_finished(self) -> bool:
+        return self.animation_time >= len(self.frames)
+
+    def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2) -> None:
+        frame_index = min(int(self.animation_time), len(self.frames) - 1)
+        sprite = self.frames[frame_index]
+        draw_pos = self.position - camera_offset
+        surface.blit(sprite, sprite.get_rect(center=(round(draw_pos.x), round(draw_pos.y))))
+
+
 class Game:
     def __init__(self) -> None:
         pygame.init()
@@ -401,6 +474,7 @@ class Game:
         self.crafting = CraftingSystem()
 
         self.zombies: List[Zombie] = []
+        self.shot_impacts: List[ShotImpact] = []
         self.nodes: List[SearchNode] = []
         self.stations: List[Station] = []
         self.decorations: List[Decoration] = []
@@ -427,6 +501,7 @@ class Game:
         self.nodes.clear()
         self.stations.clear()
         self.zombies.clear()
+        self.shot_impacts.clear()
         self.decorations.clear()
 
         for station_type, position in [
@@ -439,6 +514,9 @@ class Game:
             self.stations.append(Station(station_type, position))
 
         node_pool = [
+            "arvore",
+            "arvore",
+            "arvore",
             "caixote",
             "caixote",
             "sucata",
@@ -447,7 +525,8 @@ class Game:
             "despensa",
             "erva",
             "erva",
-            "arsenal",
+            "carro",
+            "edificio",
         ]
         for _ in range(28):
             self.nodes.append(SearchNode(random.choice(node_pool), self._random_world_position()))
@@ -497,9 +576,18 @@ class Game:
             pos.x = max(30, min(WORLD_WIDTH - 30, pos.x))
             pos.y = max(30, min(WORLD_HEIGHT - 30, pos.y))
 
-        speed = 55.0 + (self.difficulty_scale * 5.0)
-        health = int(24 + (self.difficulty_scale * 4.0))
-        self.zombies.append(Zombie(pos, speed, health=health))
+        variant_name = random.choices(
+            list(ZOMBIE_VARIANTS.keys()),
+            weights=[float(data["weight"]) for data in ZOMBIE_VARIANTS.values()],
+            k=1,
+        )[0]
+        variant = ZOMBIE_VARIANTS[variant_name]
+        base_speed = 55.0 + (self.difficulty_scale * 5.0)
+        base_health = 24 + (self.difficulty_scale * 4.0)
+        speed = base_speed * float(variant["speed"])
+        health = int(base_health * float(variant["health"]))
+        radius = int(variant["radius"])
+        self.zombies.append(Zombie(pos, speed, health=health, radius=radius, zombie_type=variant_name))
 
     def _apply_loaded_state(self, data: Dict) -> None:
         self.player.player_health = int(data.get("player_health", 100))
@@ -511,6 +599,8 @@ class Game:
         loaded_weapon = data.get("current_weapon")
         if loaded_weapon in WEAPONS:
             self.player.current_weapon = loaded_weapon
+        else:
+            self.player.current_weapon = "maos"
 
     def process_input(self) -> Tuple[pygame.Vector2, bool, bool, bool, bool, bool]:
         direction = pygame.Vector2(0, 0)
@@ -539,11 +629,13 @@ class Game:
                 elif event.key == pygame.K_q:
                     heal_pressed = True
                 elif event.key == pygame.K_1:
-                    self._equip_weapon("lanca")
+                    self._equip_weapon("maos")
                 elif event.key == pygame.K_2:
-                    self._equip_weapon("machado")
+                    self._equip_weapon("taco")
                 elif event.key == pygame.K_3:
-                    self._equip_weapon("espada")
+                    self._equip_weapon("pistola")
+                elif event.key == pygame.K_4:
+                    self._equip_weapon("escopeta")
                 elif event.key == pygame.K_SPACE:
                     attack_pressed = True
                 elif event.key == pygame.K_F5:
@@ -590,16 +682,22 @@ class Game:
 
     def _update_zombies(self, dt: float) -> None:
         base_pos = pygame.Vector2(self._base_position)
+        world_rect = pygame.Rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT)
         for zombie in self.zombies:
-            zombie.update(self.player.player_position, dt)
-            if zombie.position.distance_to(base_pos) < SAFE_ZONE_RADIUS - 10:
+            zombie.update(self.player.player_position, dt, world_rect)
+            if not zombie.is_dying() and zombie.position.distance_to(base_pos) < SAFE_ZONE_RADIUS - 10:
                 push_direction = zombie.position - base_pos
                 if push_direction.length_squared() > 0:
                     zombie.position += push_direction.normalize() * 110 * dt
-            if zombie.collides_with_player(self.player.player_position, self.player.radius):
+            if zombie.can_damage_player(self.player.player_position, self.player.radius):
                 if self.player.take_damage(10):
                     self._set_message("Voce foi atingido!")
         self.zombies = [zombie for zombie in self.zombies if not zombie.is_dead()]
+
+    def _update_shot_impacts(self, dt: float) -> None:
+        for impact in self.shot_impacts:
+            impact.update(dt)
+        self.shot_impacts = [impact for impact in self.shot_impacts if not impact.is_finished()]
 
     def _update_spawns(self, dt: float) -> None:
         self._spawn_timer += dt
@@ -628,6 +726,21 @@ class Game:
 
         return closest
 
+    def _find_nearest_corpse(self) -> Zombie | None:
+        player_pos = pygame.Vector2(self.player.player_position)
+        closest = None
+        closest_distance = SEARCH_RANGE
+
+        for zombie in self.zombies:
+            if not zombie.can_be_searched():
+                continue
+            distance = zombie.position.distance_to(player_pos)
+            if distance <= closest_distance:
+                closest_distance = distance
+                closest = zombie
+
+        return closest
+
     def _find_nearest_station(self) -> Station | None:
         player_pos = pygame.Vector2(self.player.player_position)
         closest = None
@@ -645,11 +758,26 @@ class Game:
         if not search_pressed:
             return
 
+        corpse = self._find_nearest_corpse()
+        if corpse is not None:
+            self.player.start_pickup_animation()
+            corpse.corpse_searched = True
+            rewards: Dict[str, int] = {}
+            for _ in range(random.randint(1, 2)):
+                item = random.choice(["pano", "balas", "polvora", "comida"])
+                rewards[item] = rewards.get(item, 0) + 1
+            for item, amount in rewards.items():
+                self.inventory.add_item(item, amount)
+            reward_text = ", ".join(f"{item} x{amount}" for item, amount in rewards.items())
+            self._set_message(f"Voce vasculhou o corpo: {reward_text}")
+            return
+
         node = self._find_nearest_node()
         if node is None:
             self._set_message("Nada interessante por perto.")
             return
 
+        self.player.start_pickup_animation()
         rewards, ambush_count = node.search()
         for item, amount in rewards.items():
             self.inventory.add_item(item, amount)
@@ -667,20 +795,29 @@ class Game:
         if not attack_pressed or self._attack_timer > 0:
             return
 
-        stats = WEAPONS.get(self.player.current_weapon, WEAPONS["lanca"])
+        stats = WEAPONS.get(self.player.current_weapon, WEAPONS["maos"])
         attack_range = float(stats["range"])
         damage = int(stats["damage"])
         cooldown = float(stats["cooldown"])
+        ammo_cost = int(stats.get("ammo", 0))
+
+        if ammo_cost > 0 and self.inventory.get_quantity("balas") < ammo_cost:
+            self._set_message("Sem balas.")
+            self._attack_timer = 0.2
+            return
 
         player_pos = pygame.Vector2(self.player.player_position)
         facing = self.player.facing_direction
         closest = None
-        closest_distance = attack_range
+        closest_distance = attack_range + 20
 
         for zombie in self.zombies:
+            if zombie.is_dying():
+                continue
             offset = zombie.position - player_pos
             distance = offset.length()
-            if distance > attack_range or distance == 0:
+            effective_range = attack_range + zombie.radius
+            if distance > effective_range or distance == 0:
                 continue
             direction_to_zombie = offset.normalize()
             if facing.dot(direction_to_zombie) < 0.35:
@@ -690,18 +827,21 @@ class Game:
                 closest = zombie
 
         self.player.start_attack_animation()
+        if ammo_cost > 0:
+            self.inventory.remove_item("balas", ammo_cost)
+            impact_position = closest.position if closest else player_pos + (facing * attack_range)
+            impact_position.x = max(0, min(WORLD_WIDTH, impact_position.x))
+            impact_position.y = max(0, min(WORLD_HEIGHT, impact_position.y))
+            self.shot_impacts.append(ShotImpact(impact_position))
         if closest:
             closest.take_damage(damage)
-            if closest.is_dead():
-                self.zombies.remove(closest)
-                if random.random() < 0.35:
-                    dropped_item = random.choice(["comida", "metal", "erva"])
-                    self.inventory.add_item(dropped_item, 1)
-                    self._set_message(f"Zumbi derrotado! +1 {dropped_item}")
-                else:
-                    self._set_message("Zumbi derrotado!")
+            if closest.is_dying() and not closest.loot_given:
+                closest.loot_given = True
+                self._set_message("Zumbi abatido. Vasculhe o corpo com E.")
             else:
                 self._set_message("Acerto!")
+        elif ammo_cost > 0:
+            self._set_message("Disparo sem alvo.")
 
         self._attack_timer = cooldown
 
@@ -749,6 +889,7 @@ class Game:
         dt: float,
     ) -> None:
         if self._game_over:
+            self.player.update(dt)
             return
 
         self._attack_timer = max(0.0, self._attack_timer - dt)
@@ -761,6 +902,7 @@ class Game:
 
         self._update_spawns(dt)
         self._update_zombies(dt)
+        self._update_shot_impacts(dt)
         self._handle_search(search_pressed)
         self._handle_attack(attack_pressed)
         self._handle_heal(heal_pressed)
@@ -784,6 +926,8 @@ class Game:
             world_drawables.append((node.position.y, 2, node))
         for zombie in self.zombies:
             world_drawables.append((zombie.position.y, 3, zombie))
+        for impact in self.shot_impacts:
+            world_drawables.append((impact.position.y, 5, impact))
         world_drawables.append((self.player.player_position[1], 4, self.player))
 
         for _, _, drawable in sorted(world_drawables, key=lambda item: (item[0], item[1])):
@@ -837,10 +981,13 @@ class Game:
 
     def _draw_prompt(self) -> None:
         prompt = ""
+        corpse = self._find_nearest_corpse()
         node = self._find_nearest_node()
         station = self._find_nearest_station()
 
-        if node is not None:
+        if corpse is not None:
+            prompt = "E vasculhar corpo"
+        elif node is not None:
             label = NODE_TYPES[node.node_type]["label"]
             prompt = f"E buscar em {label}"
         elif station is not None:
@@ -895,9 +1042,10 @@ class Game:
         recipe_cost = recipe.get("cost", {})
         station_needed = recipe.get("station", "-")
         nearby_station = self._find_nearest_station()
-        weapon_stats = WEAPONS.get(self.player.current_weapon, WEAPONS["lanca"])
+        weapon_stats = WEAPONS.get(self.player.current_weapon, WEAPONS["maos"])
+        nearby_corpse = self._find_nearest_corpse()
         nearby_node = self._find_nearest_node()
-        nearby_node_text = NODE_TYPES[nearby_node.node_type]["label"] if nearby_node else ""
+        nearby_node_text = "Corpo" if nearby_corpse else (NODE_TYPES[nearby_node.node_type]["label"] if nearby_node else "")
 
         left_panel = pygame.Surface((258, 112), pygame.SRCALPHA)
         pygame.draw.rect(left_panel, (*PALETTE["panel"], 210), left_panel.get_rect(), border_radius=10)
@@ -992,7 +1140,7 @@ class Game:
 
     def _draw_inventory_panel(self) -> None:
         panel_width = 280
-        panel_height = 290
+        panel_height = 340
         panel_x = WIDTH - panel_width - 14
         panel_y = 190
         panel = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
@@ -1008,11 +1156,13 @@ class Game:
             f"metal: {self.inventory.get_quantity('metal')}",
             f"pano: {self.inventory.get_quantity('pano')}",
             f"erva: {self.inventory.get_quantity('erva')}",
+            f"polvora: {self.inventory.get_quantity('polvora')}",
+            f"balas: {self.inventory.get_quantity('balas')}",
             f"comida: {self.inventory.get_quantity('comida')}",
             f"kit_medico: {self.inventory.get_quantity('kit_medico')}",
-            f"lanca: {self.inventory.get_quantity('lanca')}",
-            f"machado: {self.inventory.get_quantity('machado')}",
-            f"espada: {self.inventory.get_quantity('espada')}",
+            f"taco: {self.inventory.get_quantity('taco')}",
+            f"pistola: {self.inventory.get_quantity('pistola')}",
+            f"escopeta: {self.inventory.get_quantity('escopeta')}",
         ]
 
         y = panel_y + 46
@@ -1023,7 +1173,7 @@ class Game:
 
     def _draw_help_panel(self) -> None:
         panel_width = 420
-        panel_height = 210
+        panel_height = 235
         panel_x = (WIDTH - panel_width) // 2
         panel_y = HEIGHT - panel_height - 18
         panel = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
@@ -1038,7 +1188,8 @@ class Game:
             "WASD mover | Shift correr | Clique/SPACE atacar",
             "E vasculhar pontos | Q comer ou usar kit medico",
             "TAB trocar receita | C craftar na estacao correta",
-            "1/2/3 equipar arma | F5 salvar | F9 carregar",
+            "1 maos | 2 taco | 3 pistola | 4 escopeta",
+            "F5 salvar | F9 carregar",
             "Objetivo: explorar, lootear e voltar para a base vivo",
             "Feche este painel com H",
         ]
@@ -1075,7 +1226,9 @@ class Game:
         weapon_name = self.font.render(self.player.current_weapon.upper(), True, PALETTE["text"])
         self.screen.blit(weapon_name, (panel_x + 12, panel_y + 10))
 
-        stats_text = self.small_font.render(f"ATK {weapon_stats['damage']}  RNG {weapon_stats['range']}", True, PALETTE["text_soft"])
+        ammo_cost = int(weapon_stats.get("ammo", 0))
+        ammo_text = f"  BL {self.inventory.get_quantity('balas')}" if ammo_cost > 0 else ""
+        stats_text = self.small_font.render(f"ATK {weapon_stats['damage']}  RNG {weapon_stats['range']}{ammo_text}", True, PALETTE["text_soft"])
         self.screen.blit(stats_text, (panel_x + 12, panel_y + 36))
 
         recipe_title = self.small_font.render(f"Craft: {current_recipe}", True, PALETTE["accent"])
@@ -1104,7 +1257,7 @@ class Game:
 
     def _get_selected_recipe(self) -> str:
         if not self._recipe_names:
-            return "lanca"
+            return "taco"
         return self._recipe_names[self._selected_recipe_index]
 
     def _cycle_recipe(self) -> None:

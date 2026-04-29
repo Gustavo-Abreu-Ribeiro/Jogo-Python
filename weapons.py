@@ -4,7 +4,8 @@ from typing import Dict
 
 
 WEAPONS: Dict[str, Dict[str, float | int]] = {
-    "lanca": {"damage": 24, "range": 65, "cooldown": 0.6},
-    "machado": {"damage": 18, "range": 45, "cooldown": 0.1},
-    "espada": {"damage": 30, "range": 55, "cooldown": 0.7},
+    "maos": {"damage": 8, "range": 28, "cooldown": 0.45, "ammo": 0},
+    "taco": {"damage": 20, "range": 50, "cooldown": 0.5, "ammo": 0},
+    "pistola": {"damage": 34, "range": 260, "cooldown": 0.35, "ammo": 1},
+    "escopeta": {"damage": 58, "range": 170, "cooldown": 0.85, "ammo": 2},
 }

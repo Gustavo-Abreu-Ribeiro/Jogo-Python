@@ -1,22 +1,81 @@
 from __future__ import annotations
 
-from typing import Tuple
+from pathlib import Path
+import random
+import re
+from typing import ClassVar, Tuple
 
 import pygame
 
-from weapons import WEAPONS
+
+CHARACTER_ROOT = Path(__file__).resolve().parent / "sprites" / "character"
+LOADOUTS = {
+    "maos": {"root": CHARACTER_ROOT / "Main", "prefix": "Character"},
+    "taco": {"root": CHARACTER_ROOT / "Bat", "prefix": "Bat"},
+    "pistola": {"root": CHARACTER_ROOT / "Guns" / "Pistol", "prefix": "Pistol"},
+    "escopeta": {"root": CHARACTER_ROOT / "Guns" / "Shotgun", "prefix": "Shotgun"},
+}
+WEAPON_LAYER_OFFSETS = {
+    "taco": {
+        "down": (0, -12),
+        "left": (0, -9),
+        "right": (0, -9),
+        "up": (0, -6),
+    },
+    "pistola": {
+        "down": (0, -12),
+        "left": (0, -12),
+        "right": (0, -12),
+        "up": (0, -6),
+    },
+    "escopeta": {
+        "down": (0, -12),
+        "left": (0, -12),
+        "right": (0, -12),
+        "up": (0, -6),
+    },
+}
+DIRECTION_NAMES = {
+    "down": "down",
+    "side-left": "left",
+    "side": "right",
+    "up": "up",
+}
+ANIMATION_NAMES = {
+    "idle": "idle",
+    "idle-and-run": "idle_and_run",
+    "run": "run",
+    "punch": "attack",
+    "attack": "attack",
+    "shoot": "attack",
+    "pick-up": "pickup",
+    "death1": "death_1",
+    "death2": "death_2",
+    "death3": "death_3",
+}
+ANIMATION_FPS = {
+    "idle": 6.0,
+    "run": 10.0,
+    "attack": 14.0,
+    "pickup": 10.0,
+    "death_1": 9.0,
+    "death_2": 9.0,
+    "death_3": 9.0,
+}
 
 
 class Player:
+    SPRITE_SCALE: ClassVar[int] = 3
+    _sprite_cache: ClassVar[dict[str, dict[str, dict[str, list[pygame.Surface]]]]] = {}
+
     def __init__(self, position: Tuple[float, float]) -> None:
-       
         self.max_health: int = 100
         self.max_hunger: float = 100.0
         self.player_health: int = 100
         self.player_hunger: float = 100.0
         self.player_stamina: float = 100.0
         self.player_position: Tuple[float, float] = position
-        self.current_weapon: str = "lanca"
+        self.current_weapon: str = "maos"
 
         self._pos = pygame.Vector2(position)
         self.facing_direction = pygame.Vector2(1, 0)
@@ -29,17 +88,158 @@ class Player:
         self.hit_flash_timer = 0.0
         self.heal_flash_timer = 0.0
         self.attack_animation_timer = 0.0
-        self._walk_cycle = 0.0
         self._is_moving = False
+        self._is_running = False
+        self._state = "idle"
+        self._animation_time = 0.0
+        self._pickup_timer = 0.0
+        self._death_variant = "death_1"
+        self._death_finished = False
+        self._load_sprites()
+
+    @classmethod
+    def _load_sprites(cls) -> None:
+        if cls._sprite_cache:
+            return
+
+        main_full = cls._load_loadout_sprites("maos", LOADOUTS["maos"], include_no_hands=False)
+        main_body = cls._load_loadout_sprites("body", LOADOUTS["maos"], include_no_hands=True)
+        cls._sprite_cache["maos"] = main_full
+
+        for loadout_name in ("taco", "pistola", "escopeta"):
+            weapon_layers = cls._load_loadout_sprites(loadout_name, LOADOUTS[loadout_name], include_no_hands=False)
+            cls._sprite_cache[loadout_name] = cls._compose_weapon_loadout(loadout_name, main_body, weapon_layers)
+
+        if "maos" not in cls._sprite_cache or "idle" not in cls._sprite_cache["maos"]:
+            raise FileNotFoundError(f"Nenhuma spritesheet do personagem encontrada em {CHARACTER_ROOT}")
+
+    @classmethod
+    def _load_loadout_sprites(
+        cls,
+        loadout_name: str,
+        data: dict[str, object],
+        include_no_hands: bool,
+    ) -> dict[str, dict[str, list[pygame.Surface]]]:
+        animations: dict[str, dict[str, list[pygame.Surface]]] = {}
+        root = Path(data["root"])
+        prefix = str(data["prefix"])
+        pattern = re.compile(
+            rf"{re.escape(prefix)}_(?P<direction>down|up|side-left|side)_(?P<animation>.+)-Sheet(?P<frames>\d+)\.png$",
+            re.IGNORECASE,
+        )
+
+        for spritesheet_path in root.rglob(f"{prefix}_*.png"):
+            filename = spritesheet_path.name.lower()
+            is_no_hands = "no-hands" in filename or "nohands" in filename
+            if is_no_hands != include_no_hands:
+                continue
+
+            match = pattern.match(spritesheet_path.name)
+            if match is None:
+                continue
+
+            direction = DIRECTION_NAMES[match.group("direction").lower()]
+            raw_animation = match.group("animation").lower()
+            raw_animation = raw_animation.replace("_nohands", "").replace("_no-hands", "")
+            animation = ANIMATION_NAMES.get(raw_animation)
+            if animation is None:
+                continue
+
+            frames = cls._load_spritesheet(spritesheet_path, int(match.group("frames")))
+            if animation == "idle_and_run":
+                animations.setdefault("idle", {})[direction] = frames
+                animations.setdefault("run", {})[direction] = frames
+            else:
+                animations.setdefault(animation, {})[direction] = frames
+
+        return animations
+
+    @classmethod
+    def _compose_weapon_loadout(
+        cls,
+        loadout_name: str,
+        body: dict[str, dict[str, list[pygame.Surface]]],
+        weapon_layers: dict[str, dict[str, list[pygame.Surface]]],
+    ) -> dict[str, dict[str, list[pygame.Surface]]]:
+        composed: dict[str, dict[str, list[pygame.Surface]]] = {}
+
+        for animation, directions in weapon_layers.items():
+            body_animation = "attack" if animation == "attack" else animation
+            if body_animation not in body:
+                continue
+
+            for direction, weapon_frames in directions.items():
+                body_frames = body[body_animation].get(direction)
+                if not body_frames:
+                    continue
+                frame_count = min(len(body_frames), len(weapon_frames))
+                frames = [
+                    cls._compose_frame(body_frames[index], weapon_frames[index], loadout_name, direction)
+                    for index in range(frame_count)
+                ]
+                composed.setdefault(animation, {})[direction] = frames
+
+        for animation in ("pickup", "death_1", "death_2", "death_3"):
+            if animation in body:
+                composed[animation] = body[animation]
+
+        return composed
+
+    @staticmethod
+    def _compose_frame(
+        body: pygame.Surface,
+        weapon_layer: pygame.Surface,
+        loadout_name: str,
+        direction: str,
+    ) -> pygame.Surface:
+        offset_x, offset_y = WEAPON_LAYER_OFFSETS.get(loadout_name, {}).get(direction, (0, 0))
+        width = max(body.get_width(), weapon_layer.get_width())
+        height = max(body.get_height(), weapon_layer.get_height() + abs(offset_y))
+        frame = pygame.Surface((width, height), pygame.SRCALPHA)
+        body_rect = body.get_rect(midbottom=(width // 2, height))
+        weapon_rect = weapon_layer.get_rect(midbottom=(width // 2 + offset_x, height + offset_y))
+        if direction == "up":
+            frame.blit(weapon_layer, weapon_rect)
+            frame.blit(body, body_rect)
+        else:
+            frame.blit(body, body_rect)
+            frame.blit(weapon_layer, weapon_rect)
+        return frame
+
+    @classmethod
+    def _load_spritesheet(cls, path: Path, frame_count: int) -> list[pygame.Surface]:
+        display_ready = pygame.display.get_surface() is not None
+        sheet = pygame.image.load(str(path))
+        if display_ready:
+            sheet = sheet.convert_alpha()
+
+        frame_width = sheet.get_width() // frame_count
+        frame_height = sheet.get_height()
+        frames: list[pygame.Surface] = []
+        for frame_index in range(frame_count):
+            frame = pygame.Surface((frame_width, frame_height), pygame.SRCALPHA)
+            frame.blit(
+                sheet,
+                (0, 0),
+                pygame.Rect(frame_index * frame_width, 0, frame_width, frame_height),
+            )
+            frames.append(
+                pygame.transform.scale(
+                    frame,
+                    (frame_width * cls.SPRITE_SCALE, frame_height * cls.SPRITE_SCALE),
+                )
+            )
+        return frames
 
     def move(self, direction: pygame.Vector2, dt: float, running: bool) -> None:
         if direction.length_squared() > 0:
             direction = direction.normalize()
             self.facing_direction = direction
-            self._walk_cycle += dt * (12 if running else 8)
             self._is_moving = True
+            self._is_running = running and self.player_stamina > 0
         else:
             self._is_moving = False
+            self._is_running = False
 
         hunger_ratio = self.player_hunger / self.max_hunger
         speed_penalty = 0.72 if hunger_ratio < 0.2 else 1.0
@@ -75,6 +275,8 @@ class Player:
         self.player_health = max(0, self.player_health - amount)
         self._damage_cooldown = 0.6
         self.hit_flash_timer = 0.22
+        if self.player_health <= 0:
+            self.start_death_animation()
         return True
 
     def heal(self, amount: int) -> int:
@@ -91,7 +293,29 @@ class Player:
         return self.player_hunger - previous_hunger
 
     def start_attack_animation(self) -> None:
-        self.attack_animation_timer = 0.12
+        frames = self._frames_for("attack", self._direction_key())
+        self.attack_animation_timer = len(frames) / ANIMATION_FPS["attack"]
+        self._pickup_timer = 0.0
+        self._set_state("attack")
+
+    def start_pickup_animation(self) -> None:
+        frames = self._frames_for("pickup", self._direction_key())
+        self.attack_animation_timer = 0.0
+        self._pickup_timer = len(frames) / ANIMATION_FPS["pickup"] if frames else 0.3
+        self._set_state("pickup")
+
+    def start_death_animation(self) -> None:
+        if self._state == "dead":
+            return
+        variants = [
+            name
+            for name in ("death_1", "death_2", "death_3")
+            if self._has_animation(name, self._direction_key())
+        ]
+        if not variants:
+            variants = [name for name in ("death_1", "death_2", "death_3") if self._has_animation(name)]
+        self._death_variant = random.choice(variants) if variants else "idle"
+        self._set_state("dead")
 
     def update(self, dt: float) -> None:
         if self._damage_cooldown > 0:
@@ -102,83 +326,126 @@ class Player:
             self.heal_flash_timer = max(0.0, self.heal_flash_timer - dt)
         if self.attack_animation_timer > 0:
             self.attack_animation_timer = max(0.0, self.attack_animation_timer - dt)
+        if self._pickup_timer > 0:
+            self._pickup_timer = max(0.0, self._pickup_timer - dt)
+
+        if self.player_health <= 0:
+            self.start_death_animation()
+        elif self.attack_animation_timer > 0:
+            self._set_state("attack")
+        elif self._pickup_timer > 0:
+            self._set_state("pickup")
+        elif self._is_moving:
+            self._set_state("run")
+        else:
+            self._set_state("idle")
+
+        frames = self._current_frames()
+        fps = ANIMATION_FPS.get(self._animation_key(), 8.0)
+        if self._state == "run" and self._is_running:
+            fps = 13.0
+        if self._state == "dead":
+            self._animation_time = min(len(frames) - 1, self._animation_time + dt * fps)
+            self._death_finished = self._animation_time >= len(frames) - 1
+        else:
+            self._animation_time = (self._animation_time + dt * fps) % len(frames)
 
     def is_dead(self) -> bool:
         return self.player_health <= 0
 
+    @staticmethod
+    def _direction_from_vector(direction: pygame.Vector2) -> str:
+        if abs(direction.x) > abs(direction.y):
+            return "right" if direction.x > 0 else "left"
+        return "down" if direction.y > 0 else "up"
+
+    @staticmethod
+    def _flash_sprite(sprite: pygame.Surface, color: Tuple[int, int, int]) -> pygame.Surface:
+        flashed = sprite.copy()
+        overlay = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
+        overlay.fill((*color, 85))
+        flashed.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+        return flashed
+
+    def _set_state(self, state: str) -> None:
+        if self._state == state:
+            return
+        self._state = state
+        self._animation_time = 0.0
+
+    def _direction_key(self) -> str:
+        return self._direction_from_vector(self.facing_direction)
+
+    def _animation_key(self) -> str:
+        if self._state == "dead":
+            return self._death_variant
+        return self._state
+
+    def _loadout_key(self) -> str:
+        return self.current_weapon if self.current_weapon in self._sprite_cache else "maos"
+
+    def _has_animation(self, animation: str, direction: str | None = None) -> bool:
+        loadout_animations = self._sprite_cache.get(self._loadout_key(), {})
+        fallback_animations = self._sprite_cache.get("maos", {})
+        animations = loadout_animations.get(animation) or fallback_animations.get(animation)
+        if not animations:
+            return False
+        return direction is None or direction in animations
+
+    def _available_animation(self, animation: str, direction: str) -> tuple[str, str, str]:
+        loadout = self._loadout_key()
+        animations = self._sprite_cache.get(loadout, {}).get(animation)
+        if animations and direction in animations:
+            return loadout, animation, direction
+        if animations and "right" in animations:
+            return loadout, animation, "right"
+        if animations and "left" in animations:
+            return loadout, animation, "left"
+
+        animations = self._sprite_cache["maos"].get(animation)
+        if animations and direction in animations:
+            return "maos", animation, direction
+        if animations and "right" in animations:
+            return "maos", animation, "right"
+        if animations and "left" in animations:
+            return "maos", animation, "left"
+
+        idle_frames = self._sprite_cache["maos"]["idle"]
+        return "maos", "idle", direction if direction in idle_frames else "down"
+
+    def _frames_for(self, animation: str, direction: str) -> list[pygame.Surface]:
+        loadout, animation, direction = self._available_animation(animation, direction)
+        return self._sprite_cache[loadout][animation][direction]
+
+    def _current_frames(self) -> list[pygame.Surface]:
+        return self._frames_for(self._animation_key(), self._direction_key())
+
+    def _current_sprite(self) -> pygame.Surface:
+        frames = self._current_frames()
+        frame_index = min(int(self._animation_time), len(frames) - 1)
+        if self._state != "dead":
+            frame_index %= len(frames)
+        sprite = frames[frame_index]
+        if self.heal_flash_timer > 0:
+            sprite = self._flash_sprite(sprite, (70, 150, 80))
+        elif self.hit_flash_timer > 0:
+            sprite = self._flash_sprite(sprite, (155, 55, 50))
+        return sprite
+
     def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2 | None = None) -> None:
         offset = camera_offset or pygame.Vector2()
         draw_pos = self._pos - offset
-        weapon_stats = WEAPONS.get(self.current_weapon, WEAPONS["lanca"])
-        base_reach = 18
-        attack_reach = int(weapon_stats["range"] * 0.55)
-        attack_progress = self.attack_animation_timer / 0.12 if self.attack_animation_timer > 0 else 0.0
-        current_reach = base_reach + int(attack_reach * attack_progress)
+        sprite = self._current_sprite()
 
-        weapon_start = draw_pos + self.facing_direction * (self.radius - 2)
-        weapon_tip = weapon_start + self.facing_direction * current_reach
-        sweep_side = pygame.Vector2(-self.facing_direction.y, self.facing_direction.x)
-
-        weapon_shadow_start = weapon_start + pygame.Vector2(2, 2)
-        weapon_shadow_tip = weapon_tip + pygame.Vector2(2, 2)
-        pygame.draw.line(surface, (18, 22, 24), weapon_shadow_start, weapon_shadow_tip, 5)
-
-        if self.current_weapon == "lanca":
-            pygame.draw.line(surface, (170, 134, 87), weapon_start, weapon_tip, 4)
-            pygame.draw.circle(surface, (222, 227, 221), weapon_tip, 5)
-        elif self.current_weapon == "machado":
-            axe_head = weapon_tip + sweep_side * 8
-            pygame.draw.line(surface, (128, 86, 58), weapon_start, weapon_tip, 6)
-            pygame.draw.line(surface, (213, 217, 210), weapon_tip, axe_head, 8)
-        else:
-            blade_left = weapon_tip + sweep_side * 4
-            blade_right = weapon_tip - sweep_side * 4
-            pygame.draw.line(surface, (136, 101, 69), weapon_start, weapon_tip, 5)
-            pygame.draw.polygon(surface, (221, 225, 220), [weapon_tip, blade_left, blade_right])
-
-        player_color = (85, 140, 164)
-        if self.heal_flash_timer > 0:
-            player_color = (103, 194, 125)
-        elif self.hit_flash_timer > 0:
-            player_color = (214, 96, 88)
-
-        walk_swing = 0.0
-        if self._is_moving:
-            walk_swing = pygame.math.Vector2(0, 1).rotate(self._walk_cycle * 24).y * 2.4
-        side = pygame.Vector2(-self.facing_direction.y, self.facing_direction.x)
-        back_pos = draw_pos - self.facing_direction * 3
-        front_pos = draw_pos + self.facing_direction * 3
-
-        shadow_points = [
-            back_pos - side * 8 + pygame.Vector2(2, 4),
-            back_pos + side * 8 + pygame.Vector2(2, 4),
-            front_pos + side * 10 + pygame.Vector2(2, 4),
-            front_pos - side * 10 + pygame.Vector2(2, 4),
-        ]
-        pygame.draw.polygon(surface, (18, 22, 24), shadow_points)
-
-        back_leg = back_pos - side * (3 + walk_swing * 0.4)
-        front_leg = back_pos + side * (3 + walk_swing * 0.4)
-        pygame.draw.line(surface, (55, 73, 78), back_leg, back_leg - self.facing_direction * 8, 4)
-        pygame.draw.line(surface, (55, 73, 78), front_leg, front_leg - self.facing_direction * 8, 4)
-
-        body_points = [
-            back_pos - side * 8,
-            back_pos + side * 8,
-            front_pos + side * 10,
-            front_pos - side * 10,
-        ]
-        pygame.draw.polygon(surface, player_color, body_points)
-        pygame.draw.polygon(surface, (214, 222, 217), [point + pygame.Vector2(-2, -2) for point in body_points[:3]], 0)
-
-        arm_offset = side * (5 + walk_swing * 0.2)
-        arm_anchor = draw_pos + self.facing_direction * 1
-        pygame.draw.line(surface, (201, 173, 142), arm_anchor - arm_offset, weapon_start, 5)
-        pygame.draw.line(surface, (201, 173, 142), arm_anchor + arm_offset, weapon_start - side * 2, 5)
-
-        head_pos = draw_pos + self.facing_direction * 7
-        pygame.draw.circle(surface, (42, 58, 63), head_pos + pygame.Vector2(0, -1), 10)
-        pygame.draw.circle(surface, (216, 192, 164), head_pos, 8)
-        eye_pos = head_pos + self.facing_direction * 3
-        pygame.draw.circle(surface, (24, 30, 32), eye_pos + side * 2, 1)
-        pygame.draw.circle(surface, (24, 30, 32), eye_pos - side * 2, 1)
+        sprite_rect = sprite.get_rect(midbottom=(round(draw_pos.x), round(draw_pos.y + self.radius + 4)))
+        shadow_surface = pygame.Surface(
+            (
+                max(12, int(sprite_rect.width * 0.56)),
+                max(6, int(sprite_rect.height * 0.18)),
+            ),
+            pygame.SRCALPHA,
+        )
+        pygame.draw.ellipse(shadow_surface, (18, 22, 24, 115), shadow_surface.get_rect())
+        shadow_rect = shadow_surface.get_rect(center=(sprite_rect.centerx + 2, sprite_rect.bottom - 3))
+        surface.blit(shadow_surface, shadow_rect)
+        surface.blit(sprite, sprite_rect)
