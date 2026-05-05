@@ -35,6 +35,7 @@ WEAPON_LAYER_OFFSETS = {
         "up": (0, -6),
     },
 }
+EQUIPPED_WEAPON_Y_SHIFT = 6
 DIRECTION_NAMES = {
     "down": "down",
     "side-left": "left",
@@ -193,6 +194,7 @@ class Player:
         direction: str,
     ) -> pygame.Surface:
         offset_x, offset_y = WEAPON_LAYER_OFFSETS.get(loadout_name, {}).get(direction, (0, 0))
+        offset_y += EQUIPPED_WEAPON_Y_SHIFT
         width = max(body.get_width(), weapon_layer.get_width())
         height = max(body.get_height(), weapon_layer.get_height() + abs(offset_y))
         frame = pygame.Surface((width, height), pygame.SRCALPHA)
