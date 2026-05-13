@@ -8,6 +8,7 @@ import pygame
 
 from crafting import CraftingSystem
 from inventory import Inventory
+from map_loader import TiledMap
 from player import Player
 from save_system import load_game, save_game
 from weapons import WEAPONS
@@ -15,11 +16,17 @@ from zombie import Zombie
 
 
 WIDTH, HEIGHT = 960, 540
+WINDOW_WIDTH, WINDOW_HEIGHT = 1600, 900
 WORLD_WIDTH, WORLD_HEIGHT = 2200, 1400
+TILED_MAP_PATH = Path(__file__).resolve().parent.parent / "Mapa 1.tmj"
+TILED_MAP_SCALE = 2
 BG_COLOR = (24, 29, 31)
 SEARCH_RANGE = 50
 STATION_RANGE = 70
 SAFE_ZONE_RADIUS = 170
+ZOMBIE_AVOIDANCE_ANGLES = (0, 25, -25, 50, -50, 85, -85, 125, -125, 180)
+ZOMBIE_SEPARATION_STRENGTH = 58.0
+ZOMBIE_SEPARATION_ITERATIONS = 2
 
 PALETTE = {
     "bg_deep": (18, 24, 27),
@@ -459,7 +466,8 @@ class Game:
     def __init__(self) -> None:
         pygame.init()
         pygame.display.set_caption("Jogo de Sobrevivencia Zumbi")
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        self.window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        self.screen = pygame.Surface((WIDTH, HEIGHT)).convert()
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("consolas", 18)
         self.small_font = pygame.font.SysFont("consolas", 16)
@@ -478,6 +486,8 @@ class Game:
         self.nodes: List[SearchNode] = []
         self.stations: List[Station] = []
         self.decorations: List[Decoration] = []
+        self.tile_map: TiledMap | None = None
+        self.collision_rects: List[pygame.Rect] = []
 
         self._spawn_timer = 0.0
         self._starvation_timer = 0.0
@@ -503,6 +513,10 @@ class Game:
         self.zombies.clear()
         self.shot_impacts.clear()
         self.decorations.clear()
+        self.collision_rects.clear()
+
+        if self._load_tiled_world():
+            return
 
         for station_type, position in [
             ("bancada", (int(self._base_position.x - 90), int(self._base_position.y - 30))),
@@ -536,6 +550,36 @@ class Game:
         for _ in range(6):
             self._spawn_zombie()
 
+    def _load_tiled_world(self) -> bool:
+        if not TILED_MAP_PATH.exists():
+            return False
+
+        global WORLD_WIDTH, WORLD_HEIGHT
+        self.tile_map = TiledMap(TILED_MAP_PATH, scale=TILED_MAP_SCALE)
+        WORLD_WIDTH = self.tile_map.world_width
+        WORLD_HEIGHT = self.tile_map.world_height
+        self.collision_rects = list(self.tile_map.collision_rects)
+        self._base_position = self._find_open_position_near((WORLD_WIDTH * 0.5, WORLD_HEIGHT * 0.72))
+
+        station_positions = [
+            self._find_open_position_near((self._base_position.x - 80, self._base_position.y - 30)),
+            self._find_open_position_near((self._base_position.x + 80, self._base_position.y + 20)),
+        ]
+        self.stations.append(Station("bancada", tuple(station_positions[0])))
+        self.stations.append(Station("fogueira", tuple(station_positions[1])))
+
+        for spawn in self.tile_map.search_nodes:
+            interaction_position = self._find_open_position_near(spawn.position)
+            if interaction_position.distance_to(self._base_position) < 80:
+                continue
+            self.nodes.append(SearchNode(spawn.node_type, tuple(interaction_position)))
+
+        for _ in range(5):
+            self._spawn_zombie()
+
+        self._set_message("Mapa do Tiled carregado.")
+        return True
+
     def _populate_decorations(self) -> None:
         decor_plan = [
             ("tree", 20, 130, SAFE_ZONE_RADIUS + 120, (0.95, 1.0, 1.08, 1.16)),
@@ -559,10 +603,41 @@ class Game:
                 placed += 1
 
     def _random_world_position(self, margin: int = 120) -> Tuple[int, int]:
-        return (
-            random.randint(margin, WORLD_WIDTH - margin),
-            random.randint(margin, WORLD_HEIGHT - margin),
-        )
+        margin = min(margin, max(10, WORLD_WIDTH // 4), max(10, WORLD_HEIGHT // 4))
+        for _ in range(80):
+            position = (
+                random.randint(margin, max(margin, WORLD_WIDTH - margin)),
+                random.randint(margin, max(margin, WORLD_HEIGHT - margin)),
+            )
+            if not self._is_position_blocked(position, 22):
+                return position
+        return (WORLD_WIDTH // 2, WORLD_HEIGHT // 2)
+
+    def _is_position_blocked(self, position: Tuple[float, float] | pygame.Vector2, radius: int) -> bool:
+        point = pygame.Vector2(position)
+        if point.x < radius or point.y < radius or point.x > WORLD_WIDTH - radius or point.y > WORLD_HEIGHT - radius:
+            return True
+
+        test_rect = pygame.Rect(0, 0, radius * 2, radius * 2)
+        test_rect.center = (round(point.x), round(point.y))
+        return any(test_rect.colliderect(rect) for rect in self.collision_rects)
+
+    def _find_open_position_near(self, target: Tuple[float, float] | pygame.Vector2) -> pygame.Vector2:
+        target = pygame.Vector2(target)
+        target.x = max(24, min(WORLD_WIDTH - 24, target.x))
+        target.y = max(24, min(WORLD_HEIGHT - 24, target.y))
+        if not self._is_position_blocked(target, self.player.radius):
+            return target
+
+        for radius in range(32, max(WORLD_WIDTH, WORLD_HEIGHT), 32):
+            for angle in range(0, 360, 30):
+                candidate = target + pygame.Vector2(radius, 0).rotate(angle)
+                candidate.x = max(24, min(WORLD_WIDTH - 24, candidate.x))
+                candidate.y = max(24, min(WORLD_HEIGHT - 24, candidate.y))
+                if not self._is_position_blocked(candidate, self.player.radius):
+                    return candidate
+
+        return pygame.Vector2(WORLD_WIDTH // 2, WORLD_HEIGHT // 2)
 
     def _spawn_zombie(self, near_position: Tuple[float, float] | pygame.Vector2 | None = None) -> None:
         if near_position is None:
@@ -571,10 +646,7 @@ class Game:
                 pos = pygame.Vector2(self._random_world_position())
         else:
             base = pygame.Vector2(near_position)
-            offset = pygame.Vector2(random.randint(-120, 120), random.randint(-120, 120))
-            pos = base + offset
-            pos.x = max(30, min(WORLD_WIDTH - 30, pos.x))
-            pos.y = max(30, min(WORLD_HEIGHT - 30, pos.y))
+            pos = self._find_open_position_near(base + pygame.Vector2(random.randint(-120, 120), random.randint(-120, 120)))
 
         variant_name = random.choices(
             list(ZOMBIE_VARIANTS.keys()),
@@ -684,14 +756,18 @@ class Game:
         base_pos = pygame.Vector2(self._base_position)
         world_rect = pygame.Rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT)
         for zombie in self.zombies:
+            old_position = zombie.position.copy()
             zombie.update(self.player.player_position, dt, world_rect)
+            self._resolve_zombie_obstacles(zombie, old_position, dt)
             if not zombie.is_dying() and zombie.position.distance_to(base_pos) < SAFE_ZONE_RADIUS - 10:
                 push_direction = zombie.position - base_pos
                 if push_direction.length_squared() > 0:
                     zombie.position += push_direction.normalize() * 110 * dt
+                    self._resolve_zombie_obstacles(zombie, old_position, dt)
             if zombie.can_damage_player(self.player.player_position, self.player.radius):
                 if self.player.take_damage(10):
                     self._set_message("Voce foi atingido!")
+        self._separate_zombies(dt)
         self.zombies = [zombie for zombie in self.zombies if not zombie.is_dead()]
 
     def _update_shot_impacts(self, dt: float) -> None:
@@ -897,7 +973,8 @@ class Game:
         self._update_survival(dt)
         self.player.move(direction, dt, running)
         self.player.clamp_to_area(WORLD_WIDTH, WORLD_HEIGHT)
-        self.player.aim_at(self.screen_to_world(pygame.mouse.get_pos()))
+        self._resolve_player_collisions()
+        self.player.aim_at(self.screen_to_world(self._window_to_screen(pygame.mouse.get_pos())))
         self.player.update(dt)
 
         self._update_spawns(dt)
@@ -911,6 +988,160 @@ class Game:
         if self.player.is_dead():
             self._game_over = True
             self._set_message("Game Over - pressione ESC")
+
+    def _resolve_player_collisions(self) -> None:
+        if not self.collision_rects:
+            return
+
+        position = pygame.Vector2(self.player.player_position)
+        player_rect = self._entity_collision_rect(position, self.player.radius)
+
+        for rect in self.collision_rects:
+            if not player_rect.colliderect(rect):
+                continue
+
+            overlap_left = player_rect.right - rect.left
+            overlap_right = rect.right - player_rect.left
+            overlap_top = player_rect.bottom - rect.top
+            overlap_bottom = rect.bottom - player_rect.top
+            smallest = min(overlap_left, overlap_right, overlap_top, overlap_bottom)
+
+            if smallest == overlap_left:
+                position.x -= overlap_left
+            elif smallest == overlap_right:
+                position.x += overlap_right
+            elif smallest == overlap_top:
+                position.y -= overlap_top
+            else:
+                position.y += overlap_bottom
+
+            player_rect = self._entity_collision_rect(position, self.player.radius)
+
+        radius = self.player.radius
+        position.x = max(radius, min(WORLD_WIDTH - radius, position.x))
+        position.y = max(radius, min(WORLD_HEIGHT - radius, position.y))
+        self.player.set_position((position.x, position.y))
+
+    def _player_collision_rect(self, position: pygame.Vector2) -> pygame.Rect:
+        return self._entity_collision_rect(position, self.player.radius)
+
+    def _entity_collision_rect(self, position: pygame.Vector2, radius: int) -> pygame.Rect:
+        rect = pygame.Rect(0, 0, radius * 2, max(8, radius))
+        rect.midbottom = (round(position.x), round(position.y + radius))
+        return rect
+
+    def _position_hits_obstacle(self, position: pygame.Vector2, radius: int) -> bool:
+        if position.x < radius or position.y < radius or position.x > WORLD_WIDTH - radius or position.y > WORLD_HEIGHT - radius:
+            return True
+        collision_rect = self._entity_collision_rect(position, radius)
+        return any(collision_rect.colliderect(rect) for rect in self.collision_rects)
+
+    def _movement_crosses_obstacle(self, start: pygame.Vector2, end: pygame.Vector2, radius: int) -> bool:
+        movement = end - start
+        distance = movement.length()
+        if distance <= 0.01:
+            return False
+
+        step_size = max(4.0, radius * 0.5)
+        steps = max(1, int(distance / step_size))
+        for step in range(1, steps + 1):
+            if self._position_hits_obstacle(start.lerp(end, step / steps), radius):
+                return True
+        return False
+
+    def _push_entity_out_of_obstacles(self, position: pygame.Vector2, radius: int) -> pygame.Vector2:
+        collision_rect = self._entity_collision_rect(position, radius)
+        for rect in self.collision_rects:
+            if not collision_rect.colliderect(rect):
+                continue
+
+            overlap_left = collision_rect.right - rect.left
+            overlap_right = rect.right - collision_rect.left
+            overlap_top = collision_rect.bottom - rect.top
+            overlap_bottom = rect.bottom - collision_rect.top
+            smallest = min(overlap_left, overlap_right, overlap_top, overlap_bottom)
+
+            if smallest == overlap_left:
+                position.x -= overlap_left
+            elif smallest == overlap_right:
+                position.x += overlap_right
+            elif smallest == overlap_top:
+                position.y -= overlap_top
+            else:
+                position.y += overlap_bottom
+
+            collision_rect = self._entity_collision_rect(position, radius)
+
+        position.x = max(radius, min(WORLD_WIDTH - radius, position.x))
+        position.y = max(radius, min(WORLD_HEIGHT - radius, position.y))
+        return position
+
+    def _resolve_zombie_obstacles(self, zombie: Zombie, old_position: pygame.Vector2, dt: float) -> None:
+        if not self.collision_rects or zombie.is_dying():
+            return
+        if not self._position_hits_obstacle(zombie.position, zombie.radius) and not self._movement_crosses_obstacle(
+            old_position,
+            zombie.position,
+            zombie.radius,
+        ):
+            return
+
+        attempted_delta = zombie.position - old_position
+        step_distance = max(attempted_delta.length(), zombie.speed * dt, 1.0)
+        if attempted_delta.length_squared() > 0.01:
+            base_direction = attempted_delta.normalize()
+        else:
+            target_delta = pygame.Vector2(self.player.player_position) - old_position
+            base_direction = target_delta.normalize() if target_delta.length_squared() > 0 else pygame.Vector2(1, 0)
+
+        best_position = old_position.copy()
+        best_score = float("inf")
+        target = pygame.Vector2(self.player.player_position)
+        for angle in ZOMBIE_AVOIDANCE_ANGLES:
+            candidate = old_position + (base_direction.rotate(angle) * step_distance)
+            candidate.x = max(zombie.radius, min(WORLD_WIDTH - zombie.radius, candidate.x))
+            candidate.y = max(zombie.radius, min(WORLD_HEIGHT - zombie.radius, candidate.y))
+            if self._position_hits_obstacle(candidate, zombie.radius):
+                continue
+            score = candidate.distance_to(target) + abs(angle) * 0.35
+            if score < best_score:
+                best_score = score
+                best_position = candidate
+
+        if best_score < float("inf"):
+            zombie.position = best_position
+        else:
+            zombie.position = self._push_entity_out_of_obstacles(old_position.copy(), zombie.radius)
+
+    def _separate_zombies(self, dt: float) -> None:
+        living_zombies = [zombie for zombie in self.zombies if not zombie.is_dying()]
+        if len(living_zombies) < 2:
+            return
+
+        max_push = ZOMBIE_SEPARATION_STRENGTH * dt
+        for _ in range(ZOMBIE_SEPARATION_ITERATIONS):
+            for index, zombie in enumerate(living_zombies):
+                for other in living_zombies[index + 1:]:
+                    offset = zombie.position - other.position
+                    distance_sq = offset.length_squared()
+                    min_distance = zombie.radius + other.radius + 10
+                    if distance_sq <= 0.01:
+                        offset = pygame.Vector2(random.uniform(-1.0, 1.0), random.uniform(-1.0, 1.0))
+                        if offset.length_squared() <= 0.01:
+                            offset = pygame.Vector2(1, 0)
+                        distance_sq = offset.length_squared()
+                    if distance_sq >= min_distance * min_distance:
+                        continue
+
+                    distance = distance_sq ** 0.5
+                    direction = offset / distance
+                    push = min(max_push, (min_distance - distance) * 0.5)
+                    zombie.position += direction * push
+                    other.position -= direction * push
+                    if self._position_hits_obstacle(zombie.position, zombie.radius):
+                        zombie.position = self._push_entity_out_of_obstacles(zombie.position, zombie.radius)
+                    if self._position_hits_obstacle(other.position, other.radius):
+                        other.position = self._push_entity_out_of_obstacles(other.position, other.radius)
 
     def render(self, dt: float) -> None:
         self._update_camera()
@@ -941,6 +1172,8 @@ class Game:
         if self._message_timer > 0:
             self._message_timer = max(0.0, self._message_timer - dt)
 
+        scaled_frame = pygame.transform.smoothscale(self.screen, (WINDOW_WIDTH, WINDOW_HEIGHT))
+        self.window.blit(scaled_frame, (0, 0))
         pygame.display.flip()
 
     def _update_camera(self) -> None:
@@ -951,7 +1184,22 @@ class Game:
     def screen_to_world(self, screen_position: Tuple[int, int]) -> pygame.Vector2:
         return pygame.Vector2(screen_position) + self._camera
 
+    def _window_to_screen(self, window_position: Tuple[int, int]) -> Tuple[int, int]:
+        scale_x = WIDTH / WINDOW_WIDTH
+        scale_y = HEIGHT / WINDOW_HEIGHT
+        return (
+            int(window_position[0] * scale_x),
+            int(window_position[1] * scale_y),
+        )
+
     def _draw_ground(self) -> None:
+        if self.tile_map is not None:
+            self.tile_map.draw(self.screen, self._camera)
+            self._draw_base_area()
+            border_rect = pygame.Rect(-self._camera.x, -self._camera.y, WORLD_WIDTH, WORLD_HEIGHT)
+            pygame.draw.rect(self.screen, PALETTE["border"], border_rect, 8)
+            return
+
         tile_size = 64
         for x in range(0, WORLD_WIDTH, tile_size):
             for y in range(0, WORLD_HEIGHT, tile_size):
@@ -976,7 +1224,7 @@ class Game:
         pygame.draw.circle(self.screen, PALETTE["safe_fill"], draw_pos, 22, 4)
 
     def _draw_crosshair(self) -> None:
-        mouse_pos = pygame.mouse.get_pos()
+        mouse_pos = self._window_to_screen(pygame.mouse.get_pos())
         pygame.draw.circle(self.screen, (220, 220, 220), mouse_pos, 6, 1)
 
     def _draw_prompt(self) -> None:
