@@ -8,21 +8,17 @@ from inventory import Inventory
 class CraftingSystem:
 
     crafting_recipes: Dict[str, Dict[str, object]] = {
-        "taco": {"cost": {"madeira": 3}, "station": "bancada"},
-        "balas": {"cost": {"metal": 1, "polvora": 1}, "station": "bancada", "amount": 6},
-        "kit_medico": {"cost": {"pano": 2, "erva": 2}, "station": "fogueira"},
+        "taco": {"cost": {"madeira": 3}},
+        "balas": {"cost": {"metal": 1, "polvora": 1}, "amount": 6},
+        "kit_medico": {"cost": {"pano": 2, "erva": 2}},
     }
 
-    def craft(self, item_name: str, inventory: Inventory, nearby_station: str | None) -> Tuple[bool, str]:
+    def craft(self, item_name: str, inventory: Inventory) -> Tuple[bool, str]:
         if item_name not in self.crafting_recipes:
             return False, "Receita inexistente."
 
         recipe = self.crafting_recipes[item_name]
         recipe_cost = recipe["cost"]
-        required_station = recipe["station"]
-
-        if nearby_station != required_station:
-            return False, f"Precisa estar perto de: {required_station}."
 
         if not inventory.has_items(recipe_cost):
             return False, "Recursos insuficientes."

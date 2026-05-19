@@ -16,9 +16,18 @@ TILED_ROT_HEX = 0x10000000
 TILED_GID_MASK = ~(TILED_FLIP_H | TILED_FLIP_V | TILED_FLIP_D | TILED_ROT_HEX)
 
 
-SOLID_LAYER_KEYWORDS = ("objects", "building", "buildign", "wall", "car")
+SOLID_LAYER_KEYWORDS = ("collider", "collision", "solid", "objects", "building", "buildign", "wall", "car")
 SEARCH_NODE_LAYERS = {
     "loot": "despensa",
+    "cars": "carro",
+}
+TRIGGER_LAYER_TYPES = {
+    "portas": "door",
+    "porta": "door",
+    "doors": "door",
+    "door": "door",
+    "teleport": "exit",
+    "teleports": "exit",
 }
 
 
@@ -26,6 +35,15 @@ SEARCH_NODE_LAYERS = {
 class SearchNodeSpawn:
     node_type: str
     position: tuple[int, int]
+    draw_sprite: bool = False
+    radius: int = 36
+
+
+@dataclass(frozen=True)
+class MapTriggerSpawn:
+    trigger_type: str
+    position: tuple[int, int]
+    radius: int = 54
 
 
 @dataclass
@@ -75,6 +93,8 @@ class TiledMap:
         self.layers: list[TileLayer] = []
         self.collision_rects: list[pygame.Rect] = []
         self.search_nodes: list[SearchNodeSpawn] = []
+        self.door_triggers: list[MapTriggerSpawn] = []
+        self.exit_triggers: list[MapTriggerSpawn] = []
         self.unrendered_tiles_by_layer: dict[str, int] = {}
 
         self._load_layers(data.get("layers", []))
@@ -161,7 +181,9 @@ class TiledMap:
 
                 tile = self._get_tile_surface(raw_gid)
                 if tile is not None:
-                    tiles.append((world_x, world_y, tile))
+                    draw_x = world_x + ((self.render_tile_width - tile.get_width()) // 2)
+                    draw_y = world_y + self.render_tile_height - tile.get_height()
+                    tiles.append((draw_x, draw_y, tile))
                 else:
                     unrendered_tiles += 1
 
@@ -169,6 +191,12 @@ class TiledMap:
             if unrendered_tiles:
                 self.unrendered_tiles_by_layer[name] = unrendered_tiles
             self.search_nodes.extend(self._make_search_nodes(name, occupied_tiles))
+            triggers = self._make_trigger_spawns(name, occupied_tiles)
+            for trigger in triggers:
+                if trigger.trigger_type == "door":
+                    self.door_triggers.append(trigger)
+                elif trigger.trigger_type == "exit":
+                    self.exit_triggers.append(trigger)
 
     def _get_tile_surface(self, raw_gid: int) -> pygame.Surface | None:
         gid = raw_gid & TILED_GID_MASK
@@ -219,7 +247,11 @@ class TiledMap:
         return any(keyword in normalized for keyword in SOLID_LAYER_KEYWORDS)
 
     def _make_search_nodes(self, layer_name: str, occupied_tiles: set[tuple[int, int]]) -> list[SearchNodeSpawn]:
-        node_type = SEARCH_NODE_LAYERS.get(layer_name.lower())
+        normalized = layer_name.lower()
+        if normalized == "nature":
+            node_type = "natureza"
+        else:
+            node_type = SEARCH_NODE_LAYERS.get(normalized)
         if node_type is None:
             return []
 
@@ -244,6 +276,37 @@ class TiledMap:
                 )
             )
         return nodes
+
+    def _make_trigger_spawns(self, layer_name: str, occupied_tiles: set[tuple[int, int]]) -> list[MapTriggerSpawn]:
+        trigger_type = TRIGGER_LAYER_TYPES.get(layer_name.lower())
+        if trigger_type is None:
+            return []
+
+        triggers: list[MapTriggerSpawn] = []
+        seen: set[tuple[int, int]] = set()
+        for start in occupied_tiles:
+            if start in seen:
+                continue
+            cluster = self._collect_cluster(start, occupied_tiles, seen)
+            if not cluster:
+                continue
+
+            avg_x = sum(tile[0] for tile in cluster) / len(cluster)
+            avg_y = sum(tile[1] for tile in cluster) / len(cluster)
+            radius = max(self.render_tile_width, self.render_tile_height)
+            if len(cluster) > 1:
+                radius = max(radius, int((len(cluster) ** 0.5) * self.render_tile_width))
+            triggers.append(
+                MapTriggerSpawn(
+                    trigger_type=trigger_type,
+                    position=(
+                        int((avg_x + 0.5) * self.render_tile_width),
+                        int((avg_y + 0.5) * self.render_tile_height),
+                    ),
+                    radius=radius,
+                )
+            )
+        return triggers
 
     @staticmethod
     def _collect_cluster(
