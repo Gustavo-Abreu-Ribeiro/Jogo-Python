@@ -215,6 +215,7 @@ class Player:
         if display_ready:
             sheet = sheet.convert_alpha()
 
+        frame_count = cls._resolve_frame_count(path, sheet.get_width(), frame_count)
         frame_width = sheet.get_width() // frame_count
         frame_height = sheet.get_height()
         frames: list[pygame.Surface] = []
@@ -232,6 +233,18 @@ class Player:
                 )
             )
         return frames
+
+    @staticmethod
+    def _resolve_frame_count(path: Path, sheet_width: int, declared_frame_count: int) -> int:
+        if declared_frame_count > 0 and sheet_width % declared_frame_count == 0:
+            return declared_frame_count
+
+        # Some death spritesheets are exported with a wrong SheetN suffix.
+        for candidate in range(max(1, declared_frame_count - 2), declared_frame_count + 4):
+            if candidate > 0 and sheet_width % candidate == 0:
+                return candidate
+
+        return max(1, declared_frame_count)
 
     def move(self, direction: pygame.Vector2, dt: float, running: bool) -> None:
         if direction.length_squared() > 0:

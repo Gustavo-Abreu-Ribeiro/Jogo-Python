@@ -1,0 +1,24 @@
+{
+  "player_health": 24,
+  "player_hunger": 24.914500000007546,
+  "player_position": [
+    1083.7546191745573,
+    440.9350932709175
+  ],
+  "inventory": {
+    "madeira": 2,
+    "metal": 2,
+    "comida": 1,
+    "pano": 1,
+    "erva": 1,
+    "kit_medico": 0,
+    "polvora": 2,
+    "balas": 0,
+    "maos": 1,
+    "taco": 1,
+    "pistola": 1,
+    "escopeta": 3
+  },
+  "game_time": 121.70900000000178,
+  "current_weapon": "taco"
+}

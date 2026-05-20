@@ -1,0 +1,42 @@
+Zombie 16-bit SFX Pack - original sounds
+Formato: WAV mono, 44.1kHz, 16-bit PCM
+Estilo: simples, 16-bit/chiptune, jogo de zumbi com loop de gameplay
+
+Arquivos:
+- craft_success.wav
+- dash_player.wav
+- door_locked.wav
+- door_open.wav
+- eat.wav
+- footstep_1.wav
+- footstep_2.wav
+- gun_empty_click.wav
+- gun_pistol_shot.wav
+- gun_reload_short.wav
+- gun_shotgun_shot.wav
+- heal.wav
+- hit_flesh.wav
+- inventory_move_item.wav
+- low_health_warning.wav
+- melee_punch.wav
+- metal_clank.wav
+- objective_update.wav
+- pickup_ammo.wav
+- pickup_item.wav
+- player_damage.wav
+- quest_complete.wav
+- search_car.wav
+- search_tree.wav
+- ui_cancel_back.wav
+- ui_click_confirm.wav
+- ui_denied.wav
+- ui_menu_close.wav
+- ui_menu_move.wav
+- ui_menu_open.wav
+- wood_break.wav
+- zombie_alert.wav
+- zombie_big_attack.wav
+- zombie_death.wav
+- zombie_idle_groan_short.wav
+- zombie_normal_attack.wav
+- zombie_small_dash.wav

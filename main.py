@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from pathlib import Path
 import random
+import sys
 from typing import Dict, List, Tuple
 
 import pygame
+try:
+    from pygame._sdl2 import controller as sdl_controller
+except (ImportError, pygame.error):
+    sdl_controller = None
 
 from crafting import CraftingSystem
 from inventory import Inventory
 from map_loader import TiledMap
 from player import Player
-from save_system import load_game, save_game
+from save_system import load_game, save_exists, save_game
 from weapons import WEAPONS
 from zombie import Zombie
 
@@ -19,7 +26,9 @@ WIDTH, HEIGHT = 960, 540
 WINDOW_WIDTH, WINDOW_HEIGHT = 1600, 900
 WORLD_WIDTH, WORLD_HEIGHT = 2200, 1400
 PROJECT_ROOT = Path(__file__).resolve().parent
-MAP_ROOT = PROJECT_ROOT.parent
+IS_WEB = sys.platform == "emscripten"
+LOCAL_MAP_ROOT = PROJECT_ROOT / "maps"
+MAP_ROOT = LOCAL_MAP_ROOT if LOCAL_MAP_ROOT.exists() else PROJECT_ROOT.parent
 MAP_SEQUENCE = [
     MAP_ROOT / "Mapa 1.1.tmj",
 ]
@@ -28,15 +37,106 @@ INTERIOR_MAP_PATHS = [
     MAP_ROOT / "Interior 1.tmj",
 ]
 TILED_MAP_PATH = MAP_SEQUENCE[0]
+SAVE_GAME_PATH = PROJECT_ROOT / "savegame.json"
+SETTINGS_PATH = PROJECT_ROOT / "settings.json"
+MUSIC_ROOT = PROJECT_ROOT / "musics"
+TITLE_MUSIC_PATH = MUSIC_ROOT / "Menu_Music.mp3"
+GAME_MUSIC_PATH = MUSIC_ROOT / "Loop_Music.mp3"
+GAME_MUSIC_GAIN = 3.0
+GAME_MUSIC_LAYER_COUNT = 2
+SFX_ROOT = MUSIC_ROOT / "Sound Effects"
+SFX_GAIN = 1.25
+WEB_SETTINGS_KEY = "rua_morta_settings"
 TILED_MAP_SCALE = 2
 BG_COLOR = (24, 29, 31)
 SEARCH_RANGE = 50
 DOOR_RANGE = 74
 EXIT_RANGE = 64
-SAFE_ZONE_RADIUS = 170
+START_CLEAR_RADIUS = 170
 ZOMBIE_AVOIDANCE_ANGLES = (0, 25, -25, 50, -50, 85, -85, 125, -125, 180)
 ZOMBIE_SEPARATION_STRENGTH = 58.0
 ZOMBIE_SEPARATION_ITERATIONS = 2
+BOTTOM_WORLD_PADDING = 118
+GAMEPAD_A = 0
+GAMEPAD_B = 1
+GAMEPAD_X = 2
+GAMEPAD_Y = 3
+GAMEPAD_BACK = 4
+GAMEPAD_GUIDE = 5
+GAMEPAD_START = 6
+GAMEPAD_L3 = 7
+GAMEPAD_R3 = 8
+GAMEPAD_L1 = 9
+GAMEPAD_R1 = 10
+GAMEPAD_DPAD_UP = 11
+GAMEPAD_DPAD_DOWN = 12
+GAMEPAD_DPAD_LEFT = 13
+GAMEPAD_DPAD_RIGHT = 14
+GAMEPAD_AXIS_LEFT_X = 0
+GAMEPAD_AXIS_LEFT_Y = 1
+GAMEPAD_AXIS_RIGHT_X = 2
+GAMEPAD_AXIS_RIGHT_Y = 3
+GAMEPAD_AXIS_L2 = 4
+GAMEPAD_AXIS_R2 = 5
+RAW_GAMEPAD_BACK = 8
+RAW_GAMEPAD_START = 9
+RAW_GAMEPAD_L3 = 10
+RAW_GAMEPAD_R3 = 11
+RAW_GAMEPAD_DPAD_UP = 12
+RAW_GAMEPAD_DPAD_DOWN = 13
+RAW_GAMEPAD_DPAD_LEFT = 14
+RAW_GAMEPAD_DPAD_RIGHT = 15
+RAW_GAMEPAD_GUIDE = 16
+RAW_GAMEPAD_TOUCHPAD = 17
+
+SFX_FILES = {
+    "craft_success": "craft_success.wav",
+    "door_locked": "door_locked.wav",
+    "door_open": "door_open.wav",
+    "eat": "eat.wav",
+    "gun_empty": "gun_empty_click.wav",
+    "pistol": "gun_pistol_shot.wav",
+    "shotgun": "gun_shotgun_shot.wav",
+    "heal": "heal.wav",
+    "hit_flesh": "hit_flesh.wav",
+    "inventory_move": "inventory_move_item.wav",
+    "melee": "melee_punch.wav",
+    "objective": "objective_update.wav",
+    "pickup_ammo": "pickup_ammo.wav",
+    "pickup_item": "pickup_item.wav",
+    "player_damage": "player_damage.wav",
+    "search_car": "search_car.wav",
+    "search_tree": "search_tree.wav",
+    "ui_confirm": "ui_click_confirm.wav",
+    "ui_denied": "ui_denied.wav",
+    "ui_close": "ui_menu_close.wav",
+    "ui_move": "ui_menu_move.wav",
+    "ui_open": "ui_menu_open.wav",
+    "zombie_alert": "zombie_alert.wav",
+    "zombie_big_attack": "zombie_big_attack.wav",
+    "zombie_death": "zombie_death.wav",
+    "zombie_normal_attack": "zombie_normal_attack.wav",
+    "zombie_small_dash": "zombie_small_dash.wav",
+}
+
+
+def _web_audio_path(path: Path) -> Path:
+    if IS_WEB:
+        return path.with_suffix(".ogg")
+    ogg_path = path.with_suffix(".ogg")
+    return path if path.exists() or not ogg_path.exists() else ogg_path
+
+
+def _web_local_storage() -> object | None:
+    if not IS_WEB:
+        return None
+    try:
+        import platform
+
+        return platform.window.localStorage
+    except (AttributeError, ImportError):
+        return None
+
 
 PALETTE = {
     "bg_deep": (18, 24, 27),
@@ -48,9 +148,6 @@ PALETTE = {
     "text": (233, 233, 224),
     "text_soft": (188, 193, 186),
     "accent": (214, 188, 121),
-    "safe_fill": (80, 107, 110),
-    "safe_ring": (150, 192, 192),
-    "safe_core": (228, 234, 219),
     "danger": (195, 87, 79),
 }
 
@@ -498,12 +595,6 @@ class SearchNode:
         surface.blit(shadow, shadow_rect)
         surface.blit(sprite, sprite_rect)
 
-        if not self.searched:
-            pygame.draw.circle(surface, PALETTE["accent"], sprite_rect.center, self.radius + 4, 1)
-        if self.searched:
-            center = pygame.Vector2(sprite_rect.center)
-            pygame.draw.line(surface, PALETTE["text"], center + (-8, -8), center + (8, 8), 2)
-
 
 class MapTrigger:
     def __init__(self, trigger_type: str, position: Tuple[int, int], radius: int) -> None:
@@ -549,8 +640,70 @@ class ShotImpact:
         surface.blit(sprite, sprite.get_rect(center=(round(end.x), round(end.y))))
 
 
+class FloatingPopup:
+    def __init__(
+        self,
+        position: Tuple[float, float] | pygame.Vector2,
+        icon_name: str | None = None,
+        amount: int = 0,
+        label: str = "",
+        color: Tuple[int, int, int] = PALETTE["text"],
+    ) -> None:
+        self.position = pygame.Vector2(position)
+        self.icon_name = icon_name
+        self.amount = amount
+        self.label = label
+        self.color = color
+        self.age = 0.0
+        self.duration = 1.15
+
+    def update(self, dt: float) -> None:
+        self.age += dt
+
+    def is_finished(self) -> bool:
+        return self.age >= self.duration
+
+    def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2, font: pygame.font.Font) -> None:
+        progress = max(0.0, min(1.0, self.age / self.duration))
+        alpha = max(0, min(255, int(255 * (1.0 - progress))))
+        center = self.position - camera_offset + pygame.Vector2(0, -28 - (34 * progress))
+
+        pieces: List[pygame.Surface] = []
+        if self.icon_name is not None:
+            icon = _load_ui_sprite(self.icon_name, 2).copy()
+            icon.set_alpha(alpha)
+            pieces.append(icon)
+
+        text = self.label
+        if self.amount > 0:
+            text = f"+{self.amount}"
+        if text:
+            text_surface = font.render(text, True, self.color)
+            text_surface.set_alpha(alpha)
+            pieces.append(text_surface)
+
+        if not pieces:
+            return
+
+        gap = 4 if len(pieces) > 1 else 0
+        total_width = sum(piece.get_width() for piece in pieces) + gap * (len(pieces) - 1)
+        x = center.x - (total_width / 2)
+        for piece in pieces:
+            rect = piece.get_rect(midleft=(round(x), round(center.y)))
+            surface.blit(piece, rect)
+            x += piece.get_width() + gap
+
+
 class Game:
     def __init__(self) -> None:
+        self._audio_enabled = True
+        self._current_music: Path | None = None
+        self._game_music_sound: pygame.mixer.Sound | None = None
+        self._game_music_channels: List[pygame.mixer.Channel] = []
+        try:
+            pygame.mixer.pre_init(44100, -16, 2, 512)
+        except pygame.error:
+            self._audio_enabled = False
         pygame.init()
         pygame.display.set_caption("Jogo de Sobrevivencia Zumbi")
         self.window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -558,11 +711,30 @@ class Game:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("consolas", 18)
         self.small_font = pygame.font.SysFont("consolas", 16)
+        self.menu_font = pygame.font.SysFont("consolas", 20, bold=True)
+        self.title_font = pygame.font.SysFont("consolas", 56, bold=True)
 
         self.game_time: float = 0.0
         self.difficulty_scale: float = 1.0
         self.spawn_rate: float = 1.0
         self.is_game_running: bool = True
+        self._screen_state = "main_menu"
+        self._menu_pressed_button: str | None = None
+        self._menu_message = ""
+        self._menu_message_timer = 0.0
+        self._settings = self._load_settings()
+        self._sounds: Dict[str, pygame.mixer.Sound] = {}
+        self._has_started_game = False
+        self._controller: object | None = None
+        self._gamepad: object | None = None
+        self._gamepad_buttons_down: set[int] = set()
+        self._gamepad_attack_down = False
+        self._gamepad_menu_axis_y_down = False
+        self._gamepad_menu_axis_x_down = False
+        self._right_stick_axes: Tuple[int, int] | None = None
+        self._gamepad_aim_vector = pygame.Vector2()
+        self._show_gamepad_debug = False
+        self._menu_selected_index = 0
 
         self.player = Player((WIDTH / 2, HEIGHT / 2))
         self.inventory = Inventory()
@@ -570,6 +742,7 @@ class Game:
 
         self.zombies: List[Zombie] = []
         self.shot_impacts: List[ShotImpact] = []
+        self._floating_popups: List[FloatingPopup] = []
         self.nodes: List[SearchNode] = []
         self.decorations: List[Decoration] = []
         self.doors: List[MapTrigger] = []
@@ -598,13 +771,12 @@ class Game:
         self._interior_exit: MapTrigger | None = None
         self._show_inventory = False
         self._show_crafting = False
-        self._show_help = False
         self._quick_slots = ["maos", "taco", "pistola", "escopeta", "comida", "kit_medico"]
         self._selected_quick_slot = 0
 
-        self._generate_world()
-        self.player.set_position(tuple(self._base_position))
-        self.inventory.add_item("comida", 2)
+        self._load_sfx()
+        self._reset_game()
+        self._play_title_music()
 
     @staticmethod
     def _first_existing_path(paths: List[Path], fallback: Path) -> Path:
@@ -613,10 +785,199 @@ class Game:
                 return path
         return fallback
 
+    def _load_settings(self) -> Dict[str, int]:
+        default_settings = {"master": 80, "music": 70, "sfx": 80}
+        storage = _web_local_storage()
+        if storage is not None:
+            raw_settings = storage.getItem(WEB_SETTINGS_KEY)
+            if not raw_settings:
+                return default_settings
+            try:
+                raw_settings = json.loads(str(raw_settings))
+            except json.JSONDecodeError:
+                return default_settings
+        else:
+            if not SETTINGS_PATH.exists():
+                return default_settings
+            try:
+                with open(SETTINGS_PATH, "r", encoding="utf-8") as file:
+                    raw_settings = json.load(file)
+            except (OSError, json.JSONDecodeError):
+                return default_settings
+
+        settings = default_settings.copy()
+        for key in settings:
+            try:
+                settings[key] = max(0, min(100, int(raw_settings.get(key, settings[key]))))
+            except (TypeError, ValueError):
+                pass
+        return settings
+
+    def _save_settings(self) -> None:
+        storage = _web_local_storage()
+        if storage is not None:
+            storage.setItem(WEB_SETTINGS_KEY, json.dumps(self._settings))
+            self._apply_audio_settings()
+            return
+
+        try:
+            with open(SETTINGS_PATH, "w", encoding="utf-8") as file:
+                json.dump(self._settings, file, indent=2)
+        except OSError:
+            self._set_menu_message("Nao foi possivel salvar configuracoes.")
+        self._apply_audio_settings()
+
+    def _music_volume(self, music_path: Path | None = None) -> float:
+        master = self._settings.get("master", 100) / 100
+        music = self._settings.get("music", 100) / 100
+        gain = GAME_MUSIC_GAIN if music_path == GAME_MUSIC_PATH else 1.0
+        return max(0.0, min(1.0, master * music * gain))
+
+    def _sfx_volume(self) -> float:
+        master = self._settings.get("master", 100) / 100
+        sfx = self._settings.get("sfx", 100) / 100
+        return max(0.0, min(1.0, master * sfx * SFX_GAIN))
+
+    def _apply_audio_settings(self) -> None:
+        if not self._audio_enabled:
+            return
+        if pygame.mixer.get_init() is None:
+            return
+        try:
+            pygame.mixer.music.set_volume(self._music_volume(self._current_music))
+            for channel in self._game_music_channels:
+                channel.set_volume(self._music_volume(GAME_MUSIC_PATH))
+            for sound in self._sounds.values():
+                sound.set_volume(self._sfx_volume())
+        except pygame.error:
+            self._audio_enabled = False
+
+    def _load_sfx(self) -> None:
+        if not self._audio_enabled or pygame.mixer.get_init() is None:
+            return
+        for sound_name, file_name in SFX_FILES.items():
+            sound_path = _web_audio_path(SFX_ROOT / file_name)
+            if not sound_path.exists():
+                continue
+            try:
+                sound = pygame.mixer.Sound(str(sound_path))
+                sound.set_volume(self._sfx_volume())
+                self._sounds[sound_name] = sound
+            except pygame.error:
+                continue
+
+    def _play_sfx(self, sound_name: str) -> None:
+        sound = self._sounds.get(sound_name)
+        if sound is None:
+            return
+        sound.set_volume(self._sfx_volume())
+        sound.play()
+
+    def _play_music(self, music_path: Path) -> None:
+        if not self._audio_enabled or self._current_music == music_path:
+            return
+        resolved_music_path = _web_audio_path(music_path)
+        if not resolved_music_path.exists():
+            self._set_menu_message(f"Musica nao encontrada: {resolved_music_path.name}")
+            return
+        if music_path == GAME_MUSIC_PATH:
+            self._play_boosted_game_music()
+            return
+        if pygame.mixer.get_init() is None:
+            self._set_menu_message("Audio do pygame indisponivel.")
+            return
+
+        try:
+            self._stop_boosted_game_music()
+            pygame.mixer.music.load(str(resolved_music_path))
+            pygame.mixer.music.set_volume(self._music_volume(music_path))
+            pygame.mixer.music.play(-1)
+        except pygame.error:
+            self._audio_enabled = False
+            self._set_menu_message(f"Musica nao suportada: {music_path.name}")
+            return
+
+        self._current_music = music_path
+
+    def _play_boosted_game_music(self) -> None:
+        if pygame.mixer.get_init() is None:
+            self._set_menu_message("Audio do pygame indisponivel.")
+            return
+        try:
+            game_music_path = _web_audio_path(GAME_MUSIC_PATH)
+            if not game_music_path.exists():
+                self._set_menu_message(f"Musica nao encontrada: {game_music_path.name}")
+                return
+            if self._game_music_sound is None:
+                self._game_music_sound = pygame.mixer.Sound(str(game_music_path))
+            pygame.mixer.music.stop()
+            self._stop_boosted_game_music()
+            self._game_music_channels = [
+                channel
+                for channel in (
+                    self._game_music_sound.play(loops=-1)
+                    for _ in range(GAME_MUSIC_LAYER_COUNT)
+                )
+                if channel is not None
+            ]
+            for channel in self._game_music_channels:
+                channel.set_volume(self._music_volume(GAME_MUSIC_PATH))
+        except pygame.error:
+            self._audio_enabled = False
+            self._set_menu_message(f"Musica nao suportada: {GAME_MUSIC_PATH.name}")
+            return
+
+        self._current_music = GAME_MUSIC_PATH
+
+    def _stop_boosted_game_music(self) -> None:
+        for channel in self._game_music_channels:
+            channel.stop()
+        self._game_music_channels = []
+
+    def _play_title_music(self) -> None:
+        self._play_music(TITLE_MUSIC_PATH)
+
+    def _play_game_music(self) -> None:
+        self._play_music(GAME_MUSIC_PATH)
+
+    def _reset_game(self) -> None:
+        self.game_time = 0.0
+        self.difficulty_scale = 1.0
+        self.spawn_rate = 1.0
+        self.player = Player((WIDTH / 2, HEIGHT / 2))
+        self.inventory = Inventory()
+        self.zombies = []
+        self.shot_impacts = []
+        self._floating_popups = []
+        self._spawn_timer = 0.0
+        self._starvation_timer = 0.0
+        self._message = ""
+        self._message_timer = 0.0
+        self._game_over = False
+        self._attack_timer = 0.0
+        self._transition_cooldown = 0.0
+        self._camera = pygame.Vector2()
+        self._current_map_index = 0
+        self._current_map_path = self._first_existing_path(MAP_SEQUENCE, TILED_MAP_PATH)
+        self._inside_interior = False
+        self._return_map_path = None
+        self._return_map_index = 0
+        self._return_position = None
+        self._show_inventory = False
+        self._show_crafting = False
+        self._selected_quick_slot = 0
+        self._menu_selected_index = 0
+        self._gamepad_aim_vector = pygame.Vector2()
+
+        self._generate_world()
+        self.player.set_position(tuple(self._base_position))
+        self.inventory.add_item("comida", 2)
+
     def _clear_world_content(self) -> None:
         self.nodes.clear()
         self.zombies.clear()
         self.shot_impacts.clear()
+        self._floating_popups.clear()
         self.decorations.clear()
         self.doors.clear()
         self.exits.clear()
@@ -728,6 +1089,7 @@ class Game:
     def _enter_random_interior(self, door: MapTrigger) -> None:
         interior_paths = [path for path in INTERIOR_MAP_PATHS if path.exists()]
         if not interior_paths:
+            self._play_sfx("door_locked")
             self._set_message("Nenhum interior configurado.")
             return
 
@@ -736,10 +1098,12 @@ class Game:
         self._return_position = self._find_open_position_near(door.position + pygame.Vector2(0, 78))
         interior_path = random.choice(interior_paths)
         if self._switch_to_tiled_map(interior_path, inside_interior=True):
+            self._play_sfx("door_open")
             self._set_message("Voce entrou no predio.")
 
     def _leave_interior(self) -> None:
         if self._return_map_path is None or self._return_position is None:
+            self._play_sfx("door_locked")
             self._set_message("Saida sem destino.")
             return
 
@@ -754,11 +1118,13 @@ class Game:
         ):
             self._return_map_path = None
             self._return_position = None
+            self._play_sfx("door_open")
             self._set_message("Voce saiu do predio.")
 
     def _use_map_exit(self, trigger: MapTrigger) -> None:
         available_maps = [path for path in MAP_SEQUENCE if path.exists()]
         if not available_maps:
+            self._play_sfx("ui_denied")
             self._set_message("Nenhum mapa configurado.")
             return
 
@@ -780,17 +1146,18 @@ class Game:
         spawn = self._find_open_position_near((spawn_x, spawn_y))
         self.player.set_position(tuple(spawn))
         self._transition_cooldown = 0.9
+        self._play_sfx("objective")
         self._set_message("Voce continuou pela rua.")
 
     def _populate_decorations(self) -> None:
         decor_plan = [
-            ("tree", 20, 130, SAFE_ZONE_RADIUS + 120, (0.95, 1.0, 1.08, 1.16)),
-            ("bush", 16, 110, SAFE_ZONE_RADIUS + 90, (0.9, 1.0, 1.08)),
-            ("rock", 10, 100, SAFE_ZONE_RADIUS + 85, (0.9, 1.0, 1.1)),
-            ("vehicle", 7, 180, SAFE_ZONE_RADIUS + 150, (0.95, 1.0, 1.05)),
-            ("container", 5, 180, SAFE_ZONE_RADIUS + 160, (0.95, 1.0)),
-            ("building", 5, 220, SAFE_ZONE_RADIUS + 200, (0.95, 1.0, 1.05)),
-            ("street_light", 8, 120, SAFE_ZONE_RADIUS + 100, (1.0, 1.1)),
+            ("tree", 20, 130, START_CLEAR_RADIUS + 120, (0.95, 1.0, 1.08, 1.16)),
+            ("bush", 16, 110, START_CLEAR_RADIUS + 90, (0.9, 1.0, 1.08)),
+            ("rock", 10, 100, START_CLEAR_RADIUS + 85, (0.9, 1.0, 1.1)),
+            ("vehicle", 7, 180, START_CLEAR_RADIUS + 150, (0.95, 1.0, 1.05)),
+            ("container", 5, 180, START_CLEAR_RADIUS + 160, (0.95, 1.0)),
+            ("building", 5, 220, START_CLEAR_RADIUS + 200, (0.95, 1.0, 1.05)),
+            ("street_light", 8, 120, START_CLEAR_RADIUS + 100, (1.0, 1.1)),
         ]
 
         for decor_type, count, margin, safe_distance, scale_choices in decor_plan:
@@ -840,6 +1207,229 @@ class Game:
                     return candidate
 
         return pygame.Vector2(WORLD_WIDTH // 2, WORLD_HEIGHT // 2)
+
+    def _get_gamepad(self) -> object | None:
+        if sdl_controller is not None:
+            try:
+                if not sdl_controller.get_init():
+                    sdl_controller.init()
+                if self._controller is not None:
+                    return self._controller
+                for index in range(sdl_controller.get_count()):
+                    if sdl_controller.is_controller(index):
+                        self._controller = sdl_controller.Controller(index)
+                        self._gamepad = self._controller
+                        return self._controller
+            except pygame.error:
+                self._controller = None
+
+        if not pygame.joystick.get_init():
+            pygame.joystick.init()
+        if self._gamepad is not None:
+            try:
+                if hasattr(self._gamepad, "get_attached") and not self._gamepad.get_attached():
+                    self._gamepad = None
+                else:
+                    self._gamepad.get_numaxes()
+                    self._gamepad.get_numbuttons()
+                    return self._gamepad
+            except pygame.error:
+                self._gamepad = None
+
+        if pygame.joystick.get_count() <= 0:
+            self._gamepad = None
+            return None
+
+        try:
+            self._gamepad = pygame.joystick.Joystick(0)
+            if hasattr(self._gamepad, "get_init") and not self._gamepad.get_init():
+                self._gamepad.init()
+            if hasattr(self._gamepad, "get_attached") and not self._gamepad.get_attached():
+                self._gamepad = None
+                return None
+            if self._gamepad.get_numaxes() > 0 or self._gamepad.get_numbuttons() > 0:
+                return self._gamepad
+        except pygame.error:
+            self._gamepad = None
+        return None
+
+    @staticmethod
+    def _deadzone_axis(value: float, deadzone: float = 0.18) -> float:
+        if abs(value) > 1.0:
+            value = max(-1.0, min(1.0, value / 32767.0))
+        return 0.0 if abs(value) < deadzone else value
+
+    def _gamepad_axis(self, gamepad: object, axis: int) -> float:
+        try:
+            if hasattr(gamepad, "get_numaxes") and axis >= gamepad.get_numaxes():
+                return 0.0
+            return self._deadzone_axis(float(gamepad.get_axis(axis)))
+        except (AttributeError, pygame.error):
+            return 0.0
+
+    def _gamepad_axis_count(self, gamepad: object) -> int:
+        if hasattr(gamepad, "get_numaxes"):
+            try:
+                return int(gamepad.get_numaxes())
+            except pygame.error:
+                return 0
+        return 6
+
+    def _uses_sdl_gamepad_mapping(self, gamepad: object) -> bool:
+        return self._controller is not None and gamepad is self._controller
+
+    def _gamepad_button_map(self, gamepad: object) -> Dict[str, set[int]]:
+        if self._uses_sdl_gamepad_mapping(gamepad):
+            return {
+                "back": {GAMEPAD_BACK},
+                "start": {GAMEPAD_START},
+                "guide": {GAMEPAD_GUIDE, 15, RAW_GAMEPAD_TOUCHPAD},
+                "l3": {GAMEPAD_L3},
+                "r3": {GAMEPAD_R3},
+                "l1": {GAMEPAD_L1},
+                "r1": {GAMEPAD_R1},
+                "dpad_up": {GAMEPAD_DPAD_UP},
+                "dpad_down": {GAMEPAD_DPAD_DOWN},
+                "dpad_left": {GAMEPAD_DPAD_LEFT},
+                "dpad_right": {GAMEPAD_DPAD_RIGHT},
+            }
+
+        return {
+            "back": {RAW_GAMEPAD_BACK},
+            "start": {RAW_GAMEPAD_START},
+            "guide": {RAW_GAMEPAD_GUIDE, RAW_GAMEPAD_TOUCHPAD},
+            "l3": {RAW_GAMEPAD_L3},
+            "r3": {RAW_GAMEPAD_R3},
+            "l1": {4},
+            "r1": {5},
+            "dpad_up": {RAW_GAMEPAD_DPAD_UP},
+            "dpad_down": {RAW_GAMEPAD_DPAD_DOWN},
+            "dpad_left": {RAW_GAMEPAD_DPAD_LEFT},
+            "dpad_right": {RAW_GAMEPAD_DPAD_RIGHT},
+        }
+
+    @staticmethod
+    def _has_any_button(buttons: set[int], candidates: set[int]) -> bool:
+        return bool(buttons.intersection(candidates))
+
+    def _gamepad_right_stick(self, gamepad: object, left: pygame.Vector2) -> pygame.Vector2:
+        axis_count = self._gamepad_axis_count(gamepad)
+        candidates: List[Tuple[Tuple[int, int], pygame.Vector2]] = []
+        for pair in ((2, 3), (3, 4), (2, 4), (4, 5)):
+            x_axis, y_axis = pair
+            if x_axis >= axis_count or y_axis >= axis_count:
+                continue
+            vector = pygame.Vector2(self._gamepad_axis(gamepad, x_axis), self._gamepad_axis(gamepad, y_axis))
+            candidates.append((pair, vector))
+
+        if self._right_stick_axes is not None:
+            for pair, vector in candidates:
+                if pair == self._right_stick_axes:
+                    if vector.length_squared() > 0.01:
+                        return vector
+                    break
+
+        best_pair: Tuple[int, int] | None = None
+        best_vector = pygame.Vector2()
+        best_score = 0.0
+        for pair, vector in candidates:
+            score = vector.length_squared()
+            if pair == (4, 5) and vector.y > 0:
+                score *= 0.2
+            if left.length_squared() > 0.04 and abs(vector.x - left.x) < 0.03 and abs(vector.y - left.y) < 0.03:
+                score *= 0.25
+            if score > best_score:
+                best_score = score
+                best_pair = pair
+                best_vector = vector
+
+        if best_pair is not None and best_score > 0.04:
+            self._right_stick_axes = best_pair
+        return best_vector
+
+    def _poll_gamepad_buttons(self, gamepad: object) -> set[int]:
+        buttons: set[int] = set()
+        try:
+            button_count = gamepad.get_numbuttons() if hasattr(gamepad, "get_numbuttons") else 16
+            for index in range(button_count):
+                if gamepad.get_button(index):
+                    buttons.add(index)
+        except (AttributeError, pygame.error):
+            return set()
+        return buttons
+
+    def _apply_gamepad_input(
+        self,
+        direction: pygame.Vector2,
+        running: bool,
+        craft_pressed: bool,
+        search_pressed: bool,
+        attack_pressed: bool,
+        heal_pressed: bool,
+    ) -> Tuple[pygame.Vector2, bool, bool, bool, bool, bool]:
+        gamepad = self._get_gamepad()
+        if gamepad is None:
+            self._gamepad_buttons_down.clear()
+            self._gamepad_attack_down = False
+            return direction, running, craft_pressed, search_pressed, attack_pressed, heal_pressed
+
+        buttons = self._poll_gamepad_buttons(gamepad)
+        pressed = buttons - self._gamepad_buttons_down
+        button_map = self._gamepad_button_map(gamepad)
+
+        left = pygame.Vector2(self._gamepad_axis(gamepad, 0), self._gamepad_axis(gamepad, 1))
+        if left.length_squared() > 0.01:
+            direction = left.normalize() if left.length_squared() > 1.0 else left
+
+        right = self._gamepad_right_stick(gamepad, left)
+        if right.length_squared() > 0.04:
+            self._gamepad_aim_vector = right.normalize()
+        elif right.length_squared() <= 0.01:
+            self._gamepad_aim_vector = pygame.Vector2()
+
+        if self._has_any_button(pressed, button_map["guide"]):
+            self._show_gamepad_debug = not self._show_gamepad_debug
+
+        running = running or self._has_any_button(buttons, button_map["l3"])
+        search_pressed = search_pressed or GAMEPAD_A in pressed
+        heal_pressed = heal_pressed or GAMEPAD_Y in pressed
+        if GAMEPAD_X in pressed:
+            self._show_crafting = not self._show_crafting
+            self._play_sfx("ui_open" if self._show_crafting else "ui_close")
+            if self._show_crafting:
+                self._show_inventory = False
+        if self._has_any_button(pressed, button_map["r3"]):
+            self._show_inventory = not self._show_inventory
+            self._play_sfx("ui_open" if self._show_inventory else "ui_close")
+            if self._show_inventory:
+                self._show_crafting = False
+        if self._has_any_button(pressed, button_map["back"]) or self._has_any_button(pressed, button_map["start"]):
+            if self._show_inventory:
+                self._show_inventory = False
+            elif self._show_crafting:
+                self._show_crafting = False
+            else:
+                self._screen_state = "main_menu"
+                self._play_title_music()
+                self._play_sfx("ui_open")
+        if self._has_any_button(pressed, button_map["l1"]):
+            self._cycle_quick_slot(-1)
+        if self._has_any_button(pressed, button_map["r1"]):
+            self._cycle_quick_slot(1)
+        if self._has_any_button(pressed, button_map["dpad_left"]):
+            self._cycle_quick_slot(-1)
+        if self._has_any_button(pressed, button_map["dpad_right"]):
+            self._cycle_quick_slot(1)
+
+        trigger_attack = self._gamepad_axis(gamepad, GAMEPAD_AXIS_R2) > 0.45
+        if not self._uses_sdl_gamepad_mapping(gamepad):
+            trigger_attack = trigger_attack or 7 in buttons
+        if trigger_attack and not self._gamepad_attack_down:
+            attack_pressed = True
+
+        self._gamepad_buttons_down = buttons
+        self._gamepad_attack_down = trigger_attack
+        return direction, running, craft_pressed, search_pressed, attack_pressed, heal_pressed
 
     def _spawn_zombie(self, near_position: Tuple[float, float] | pygame.Vector2 | None = None) -> None:
         if near_position is None:
@@ -894,7 +1484,9 @@ class Game:
                     elif self._show_crafting:
                         self._show_crafting = False
                     else:
-                        self.is_game_running = False
+                        self._screen_state = "main_menu"
+                        self._play_title_music()
+                        self._play_sfx("ui_open")
                 elif event.key == pygame.K_c:
                     if self._quick_slots[self._selected_quick_slot] in CONSUMABLE_ITEMS:
                         heal_pressed = True
@@ -902,6 +1494,7 @@ class Game:
                         search_pressed = True
                 elif event.key == pygame.K_b:
                     self._show_crafting = not self._show_crafting
+                    self._play_sfx("ui_open" if self._show_crafting else "ui_close")
                     if self._show_crafting:
                         self._show_inventory = False
                 elif event.key == pygame.K_TAB:
@@ -910,10 +1503,9 @@ class Game:
                     search_pressed = True
                 elif event.key == pygame.K_i:
                     self._show_inventory = not self._show_inventory
+                    self._play_sfx("ui_open" if self._show_inventory else "ui_close")
                     if self._show_inventory:
                         self._show_crafting = False
-                elif event.key == pygame.K_h:
-                    self._show_help = not self._show_help
                 elif event.key == pygame.K_q:
                     heal_pressed = True
                 elif event.key == pygame.K_1:
@@ -930,15 +1522,20 @@ class Game:
                     self._select_quick_slot(5)
                 elif event.key == pygame.K_SPACE:
                     attack_pressed = True
+                elif event.key == pygame.K_F2:
+                    self._show_gamepad_debug = not self._show_gamepad_debug
                 elif event.key == pygame.K_F5:
-                    save_game("savegame.json", self.player, self.inventory, self.game_time)
+                    save_game(str(SAVE_GAME_PATH), self.player, self.inventory, self.game_time)
+                    self._play_sfx("objective")
                     self._set_message("Jogo salvo.")
                 elif event.key == pygame.K_F9:
-                    data = load_game("savegame.json")
+                    data = load_game(str(SAVE_GAME_PATH))
                     if data is None:
+                        self._play_sfx("ui_denied")
                         self._set_message("Sem save encontrado.")
                     else:
                         self._apply_loaded_state(data)
+                        self._play_sfx("objective")
                         self._set_message("Save carregado.")
             elif event.type == pygame.MOUSEWHEEL:
                 self._cycle_quick_slot(-event.y)
@@ -947,6 +1544,7 @@ class Game:
                 if self._show_inventory:
                     if self._inventory_close_button_rect().collidepoint(mouse_pos):
                         self._show_inventory = False
+                        self._play_sfx("ui_close")
                     continue
                 if self._show_crafting:
                     self._handle_crafting_click(mouse_pos)
@@ -962,9 +1560,267 @@ class Game:
             direction.x -= 1
         if keys[pygame.K_d]:
             direction.x += 1
-        running = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
+        running = running or keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
 
-        return direction, running, craft_pressed, search_pressed, attack_pressed, heal_pressed
+        return self._apply_gamepad_input(direction, running, craft_pressed, search_pressed, attack_pressed, heal_pressed)
+
+    def process_menu_input(self) -> None:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.is_game_running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    if self._screen_state == "main_menu":
+                        self.is_game_running = False
+                    else:
+                        self._play_sfx("ui_close")
+                        self._screen_state = "main_menu"
+                elif event.key == pygame.K_F2:
+                    self._show_gamepad_debug = not self._show_gamepad_debug
+                elif event.key in (pygame.K_RETURN, pygame.K_SPACE) and self._screen_state == "main_menu":
+                    self._play_sfx("ui_confirm")
+                    self._handle_main_menu_action("new_game")
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mouse_pos = self._window_to_screen(event.pos)
+                self._menu_pressed_button = None
+                clicked_button = False
+                if self._screen_state == "main_menu":
+                    for action, _, rect in self._main_menu_button_rects():
+                        if rect.collidepoint(mouse_pos):
+                            clicked_button = True
+                            self._menu_pressed_button = action
+                            self._play_sfx("ui_confirm")
+                            self._handle_main_menu_action(action)
+                            break
+                elif self._screen_state == "saves":
+                    clicked_button = self._handle_saves_menu_click(mouse_pos)
+                elif self._screen_state == "settings":
+                    clicked_button = self._handle_settings_menu_click(mouse_pos)
+                if not clicked_button:
+                    self._play_sfx("ui_denied")
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                self._menu_pressed_button = None
+        self._process_gamepad_menu_input()
+
+    def _current_menu_actions(self) -> List[str]:
+        if self._screen_state == "saves":
+            return [action for action, _, _ in self._saves_menu_button_rects()]
+        if self._screen_state == "settings":
+            return ["master", "music", "sfx", "back"]
+        return [action for action, _, _ in self._main_menu_button_rects()]
+
+    def _clamp_menu_selection(self) -> None:
+        actions = self._current_menu_actions()
+        if not actions:
+            self._menu_selected_index = 0
+            return
+        self._menu_selected_index %= len(actions)
+
+    def _move_menu_selection(self, delta: int) -> None:
+        actions = self._current_menu_actions()
+        if not actions or delta == 0:
+            return
+        self._menu_selected_index = (self._menu_selected_index + delta) % len(actions)
+        self._play_sfx("ui_move")
+
+    def _activate_menu_selection(self) -> None:
+        actions = self._current_menu_actions()
+        if not actions:
+            return
+        action = actions[self._menu_selected_index % len(actions)]
+        if self._screen_state == "main_menu":
+            self._play_sfx("ui_confirm")
+            self._handle_main_menu_action(action)
+        elif self._screen_state == "saves":
+            rects = {item_action: rect for item_action, _, rect in self._saves_menu_button_rects()}
+            rect = rects.get(action)
+            if rect is not None:
+                self._handle_saves_menu_click(rect.center)
+        elif self._screen_state == "settings":
+            if action == "back":
+                self._play_sfx("ui_close")
+                self._screen_state = "main_menu"
+
+    def _adjust_selected_setting(self, delta: int) -> None:
+        actions = self._current_menu_actions()
+        if not actions or self._screen_state != "settings":
+            return
+        action = actions[self._menu_selected_index % len(actions)]
+        if action not in self._settings:
+            return
+        self._settings[action] = max(0, min(100, self._settings[action] + delta))
+        self._save_settings()
+        self._play_sfx("ui_move")
+
+    def _process_gamepad_menu_input(self) -> None:
+        gamepad = self._get_gamepad()
+        if gamepad is None:
+            self._gamepad_buttons_down.clear()
+            return
+
+        buttons = self._poll_gamepad_buttons(gamepad)
+        pressed = buttons - self._gamepad_buttons_down
+        button_map = self._gamepad_button_map(gamepad)
+        y_axis = self._gamepad_axis(gamepad, GAMEPAD_AXIS_LEFT_Y)
+        x_axis = self._gamepad_axis(gamepad, GAMEPAD_AXIS_LEFT_X)
+
+        self._clamp_menu_selection()
+        if self._has_any_button(pressed, button_map["dpad_up"]) or (y_axis < -0.55 and not self._gamepad_menu_axis_y_down):
+            self._move_menu_selection(-1)
+        elif self._has_any_button(pressed, button_map["dpad_down"]) or (y_axis > 0.55 and not self._gamepad_menu_axis_y_down):
+            self._move_menu_selection(1)
+
+        if self._screen_state == "settings":
+            if self._has_any_button(pressed, button_map["dpad_left"]) or (x_axis < -0.55 and not self._gamepad_menu_axis_x_down):
+                self._adjust_selected_setting(-5)
+            elif self._has_any_button(pressed, button_map["dpad_right"]) or (x_axis > 0.55 and not self._gamepad_menu_axis_x_down):
+                self._adjust_selected_setting(5)
+
+        if self._has_any_button(pressed, button_map["guide"]):
+            self._show_gamepad_debug = not self._show_gamepad_debug
+        if GAMEPAD_A in pressed:
+            self._activate_menu_selection()
+        if (
+            GAMEPAD_B in pressed
+            or self._has_any_button(pressed, button_map["back"])
+            or self._has_any_button(pressed, button_map["start"])
+        ):
+            if self._screen_state == "main_menu":
+                if self._has_started_game and not self._game_over:
+                    self._screen_state = "playing"
+                    self._play_game_music()
+                else:
+                    self.is_game_running = False
+            else:
+                self._screen_state = "main_menu"
+                self._menu_selected_index = 0
+                self._play_sfx("ui_close")
+
+        self._gamepad_menu_axis_y_down = abs(y_axis) > 0.55
+        self._gamepad_menu_axis_x_down = abs(x_axis) > 0.55
+        self._gamepad_buttons_down = buttons
+
+    def _handle_main_menu_action(self, action: str) -> None:
+        if action == "new_game":
+            self._reset_game()
+            self._has_started_game = True
+            self._screen_state = "playing"
+            self._play_game_music()
+            self._set_message("Novo jogo iniciado.")
+        elif action == "continue_game":
+            if self._has_started_game and not self._game_over:
+                self._screen_state = "playing"
+                self._play_game_music()
+            else:
+                self._load_saved_game()
+        elif action == "saves":
+            self._play_sfx("ui_open")
+            self._screen_state = "saves"
+        elif action == "settings":
+            self._play_sfx("ui_open")
+            self._screen_state = "settings"
+        elif action == "quit":
+            self.is_game_running = False
+
+    def _load_saved_game(self) -> bool:
+        data = load_game(str(SAVE_GAME_PATH))
+        if data is None:
+            self._play_sfx("ui_denied")
+            self._set_menu_message("Nenhum save encontrado.")
+            return False
+
+        self._reset_game()
+        self._apply_loaded_state(data)
+        self._has_started_game = True
+        self._screen_state = "playing"
+        self._play_game_music()
+        self._play_sfx("objective")
+        self._set_message("Save carregado.")
+        return True
+
+    def _set_menu_message(self, text: str) -> None:
+        self._menu_message = text
+        self._menu_message_timer = 3.0
+
+    def _main_menu_button_rects(self) -> List[Tuple[str, str, pygame.Rect]]:
+        specs = [
+            ("new_game", "Play"),
+            ("continue_game", "Load"),
+            ("saves", "Save"),
+            ("settings", "Settings"),
+            ("quit", "Quit"),
+        ]
+        button = _load_ui_sprite("Play_Not-Pressed.png", 3)
+        gap = 11
+        total_height = len(specs) * button.get_height() + (len(specs) - 1) * gap
+        start_y = (HEIGHT - total_height) // 2
+        rects: List[Tuple[str, str, pygame.Rect]] = []
+        for index, (action, sprite_base) in enumerate(specs):
+            rect = button.get_rect(center=(WIDTH // 2, start_y + index * (button.get_height() + gap) + button.get_height() // 2))
+            rects.append((action, sprite_base, rect))
+        return rects
+
+    def _blank_menu_button_rect(self, center: Tuple[int, int], scale: int = 3) -> pygame.Rect:
+        button = _load_ui_sprite("Blank_Not-Pressed.png", scale)
+        return button.get_rect(center=center)
+
+    def _saves_menu_button_rects(self) -> List[Tuple[str, str, pygame.Rect]]:
+        button_y = 336
+        buttons = [("load", "CARREGAR", self._blank_menu_button_rect((WIDTH // 2, button_y)))]
+        if self._has_started_game:
+            buttons.append(("save_current", "SALVAR", self._blank_menu_button_rect((WIDTH // 2, button_y + 70))))
+            buttons.append(("back", "VOLTAR", self._blank_menu_button_rect((WIDTH // 2, button_y + 140))))
+        else:
+            buttons.append(("back", "VOLTAR", self._blank_menu_button_rect((WIDTH // 2, button_y + 70))))
+        return buttons
+
+    def _settings_slider_rects(self) -> List[Tuple[str, str, pygame.Rect]]:
+        rows = [("master", "MASTER"), ("music", "MUSICA"), ("sfx", "SFX")]
+        rects: List[Tuple[str, str, pygame.Rect]] = []
+        for index, (key, label) in enumerate(rows):
+            rects.append((key, label, pygame.Rect(WIDTH // 2 - 120, 246 + index * 58, 240, 14)))
+        return rects
+
+    def _settings_back_button_rect(self) -> pygame.Rect:
+        return self._blank_menu_button_rect((WIDTH // 2, 452))
+
+    def _handle_saves_menu_click(self, mouse_pos: Tuple[int, int]) -> bool:
+        for action, _, rect in self._saves_menu_button_rects():
+            if not rect.collidepoint(mouse_pos):
+                continue
+            if action == "load":
+                if save_exists(str(SAVE_GAME_PATH)):
+                    self._play_sfx("ui_confirm")
+                    self._load_saved_game()
+                else:
+                    self._play_sfx("ui_denied")
+                    self._set_menu_message("Nenhum save encontrado.")
+            elif action == "save_current":
+                save_game(str(SAVE_GAME_PATH), self.player, self.inventory, self.game_time)
+                self._play_sfx("objective")
+                self._set_menu_message("Jogo salvo no Slot 1.")
+            elif action == "back":
+                self._play_sfx("ui_close")
+                self._screen_state = "main_menu"
+            return True
+        return False
+
+    def _handle_settings_menu_click(self, mouse_pos: Tuple[int, int]) -> bool:
+        if self._settings_back_button_rect().collidepoint(mouse_pos):
+            self._play_sfx("ui_close")
+            self._screen_state = "main_menu"
+            return True
+
+        for key, _, rect in self._settings_slider_rects():
+            hit_area = rect.inflate(26, 24)
+            if not hit_area.collidepoint(mouse_pos):
+                continue
+            ratio = (mouse_pos[0] - rect.left) / max(1, rect.width)
+            self._settings[key] = max(0, min(100, int(round(ratio * 100))))
+            self._save_settings()
+            self._play_sfx("ui_move")
+            return True
+        return False
 
     def _update_difficulty(self, dt: float) -> None:
         self.game_time += dt
@@ -978,24 +1834,22 @@ class Game:
             if self._starvation_timer >= 1.4:
                 self._starvation_timer = 0.0
                 if self.player.take_damage(5):
+                    self._play_sfx("player_damage")
                     self._set_message("Voce esta morrendo de fome!")
         else:
             self._starvation_timer = 0.0
 
     def _update_zombies(self, dt: float) -> None:
-        base_pos = pygame.Vector2(self._base_position)
         world_rect = pygame.Rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT)
         for zombie in self.zombies:
             old_position = zombie.position.copy()
             zombie.update(self.player.player_position, dt, world_rect)
+            if zombie.consume_attack_started():
+                self._play_sfx(zombie.attack_sfx_name())
             self._resolve_zombie_obstacles(zombie, old_position, dt)
-            if not zombie.is_dying() and zombie.position.distance_to(base_pos) < SAFE_ZONE_RADIUS - 10:
-                push_direction = zombie.position - base_pos
-                if push_direction.length_squared() > 0:
-                    zombie.position += push_direction.normalize() * 110 * dt
-                    self._resolve_zombie_obstacles(zombie, old_position, dt)
             if zombie.can_damage_player(self.player.player_position, self.player.radius):
                 if self.player.take_damage(10):
+                    self._play_sfx("player_damage")
                     self._set_message("Voce foi atingido!")
         self._separate_zombies(dt)
         self.zombies = [zombie for zombie in self.zombies if not zombie.is_dead()]
@@ -1099,6 +1953,7 @@ class Game:
         corpse = self._find_nearest_corpse()
         if corpse is not None:
             self.player.start_pickup_animation()
+            self._play_sfx("pickup_ammo")
             corpse.corpse_searched = True
             rewards: Dict[str, int] = {}
             for _ in range(random.randint(1, 2)):
@@ -1107,28 +1962,60 @@ class Game:
                 rewards[item] = rewards.get(item, 0) + amount
             for item, amount in rewards.items():
                 self.inventory.add_item(item, amount)
-            reward_text = ", ".join(f"{item} x{amount}" for item, amount in rewards.items())
-            self._set_message(f"Voce vasculhou o corpo: {reward_text}")
+            self._add_item_popups(rewards, corpse.position)
             return
 
         node = self._find_nearest_node()
         if node is None:
-            self._set_message("Nada interessante por perto.")
+            self._play_sfx("ui_denied")
             return
 
         self.player.start_pickup_animation()
+        if node.node_type == "carro":
+            self._play_sfx("search_car")
+        elif node.node_type in {"arvore", "natureza", "erva"}:
+            self._play_sfx("search_tree")
+        else:
+            self._play_sfx("pickup_item")
         rewards, ambush_count = node.search()
         for item, amount in rewards.items():
             self.inventory.add_item(item, amount)
-
-        reward_text = ", ".join(f"{item} x{amount}" for item, amount in rewards.items())
-        message = f"Voce encontrou: {reward_text}" if reward_text else "Voce vasculhou, mas nao achou nada util."
+        if rewards:
+            self._play_sfx("pickup_ammo" if "balas" in rewards else "pickup_item")
+            self._add_item_popups(rewards, node.position)
 
         for _ in range(ambush_count):
             self._spawn_zombie(node.position)
         if ambush_count > 0:
-            message = f"{message} | Emboscada: {ambush_count} zumbi(s)!"
-        self._set_message(message)
+            self._play_sfx("zombie_alert")
+            self._add_alert_popup(node.position)
+
+    def _add_item_popups(self, rewards: Dict[str, int], origin: Tuple[float, float] | pygame.Vector2 | None = None) -> None:
+        if not rewards:
+            return
+
+        base = pygame.Vector2(origin) if origin is not None else pygame.Vector2(self.player.player_position)
+        ordered_rewards = list(rewards.items())
+        center_offset = (len(ordered_rewards) - 1) * 0.5
+        for index, (item_name, amount) in enumerate(ordered_rewards):
+            offset = pygame.Vector2((index - center_offset) * 38, -8 - (index % 2) * 8)
+            self._floating_popups.append(
+                FloatingPopup(
+                    base + offset,
+                    icon_name=ITEM_ICONS.get(item_name),
+                    amount=amount,
+                    label="" if item_name in ITEM_ICONS else ITEM_LABELS.get(item_name, item_name),
+                )
+            )
+
+    def _add_alert_popup(self, origin: Tuple[float, float] | pygame.Vector2 | None = None) -> None:
+        base = pygame.Vector2(origin) if origin is not None else pygame.Vector2(self.player.player_position)
+        self._floating_popups.append(FloatingPopup(base, label="!", color=PALETTE["danger"]))
+
+    def _update_floating_popups(self, dt: float) -> None:
+        for popup in self._floating_popups:
+            popup.update(dt)
+        self._floating_popups = [popup for popup in self._floating_popups if not popup.is_finished()]
 
     def _handle_attack(self, attack_pressed: bool) -> None:
         if not attack_pressed or self._attack_timer > 0:
@@ -1141,6 +2028,7 @@ class Game:
         ammo_cost = int(stats.get("ammo", 0))
 
         if ammo_cost > 0 and self.inventory.get_quantity("balas") < ammo_cost:
+            self._play_sfx("gun_empty")
             self._set_message("Sem balas.")
             self._attack_timer = 0.2
             return
@@ -1149,8 +2037,10 @@ class Game:
         self.player.start_attack_animation()
         if ammo_cost > 0:
             self.inventory.remove_item("balas", ammo_cost)
+            self._play_sfx("shotgun" if self.player.current_weapon == "escopeta" else "pistol")
             self._fire_gun(player_pos, attack_range, damage, stats)
         else:
+            self._play_sfx("melee")
             self._attack_melee(player_pos, attack_range, damage)
 
         self._attack_timer = cooldown
@@ -1255,8 +2145,10 @@ class Game:
         zombie.take_damage(damage)
         if zombie.is_dying() and not zombie.loot_given:
             zombie.loot_given = True
+            self._play_sfx("zombie_death")
             self._set_message("Zumbi abatido. Vasculhe o corpo com E.")
         else:
+            self._play_sfx("hit_flesh")
             self._set_message("Acerto!")
 
     def _handle_heal(self, heal_pressed: bool) -> None:
@@ -1268,34 +2160,41 @@ class Game:
             if self.inventory.get_quantity("kit_medico") > 0 and self.player.player_health < self.player.max_health:
                 self.inventory.remove_item("kit_medico", 1)
                 healed_amount = self.player.heal(55)
+                self._play_sfx("heal")
                 self._set_message(f"Kit medico usado. +{healed_amount} vida.")
                 return
+            self._play_sfx("ui_denied")
             self._set_message("Kit medico indisponivel.")
             return
 
         if selected_item == "comida":
             if self.inventory.get_quantity("comida") <= 0:
+                self._play_sfx("ui_denied")
                 self._set_message("Comida indisponivel.")
                 return
             self.inventory.remove_item("comida", 1)
             hunger_restored = int(self.player.restore_hunger(32))
             healed_amount = self.player.heal(12)
+            self._play_sfx("eat")
             self._set_message(f"Voce comeu. Fome +{hunger_restored}, vida +{healed_amount}.")
             return
 
         if self.inventory.get_quantity("kit_medico") > 0 and self.player.player_health < self.player.max_health:
             self.inventory.remove_item("kit_medico", 1)
             healed_amount = self.player.heal(55)
+            self._play_sfx("heal")
             self._set_message(f"Kit medico usado. +{healed_amount} vida.")
             return
 
         if self.inventory.get_quantity("comida") <= 0:
+            self._play_sfx("ui_denied")
             self._set_message("Voce nao tem comida nem kit medico.")
             return
 
         self.inventory.remove_item("comida", 1)
         hunger_restored = int(self.player.restore_hunger(32))
         healed_amount = self.player.heal(12)
+        self._play_sfx("eat")
         self._set_message(f"Voce comeu. Fome +{hunger_restored}, vida +{healed_amount}.")
 
     def _handle_crafting(self, craft_pressed: bool) -> None:
@@ -1304,11 +2203,17 @@ class Game:
 
         recipe_name = self._get_selected_recipe()
         success, message = self.crafting.craft(recipe_name, self.inventory)
-        self._set_message(message)
+        self._play_sfx("craft_success" if success else "ui_denied")
+        if success:
+            recipe = self.crafting.get_recipe(recipe_name)
+            self._add_item_popups({recipe_name: int(recipe.get("amount", 1)) if recipe else 1})
+        else:
+            self._set_message(message)
 
     def _handle_crafting_click(self, mouse_pos: Tuple[int, int]) -> None:
         if self._crafting_close_button_rect().collidepoint(mouse_pos):
             self._show_crafting = False
+            self._play_sfx("ui_close")
             return
 
         for recipe_name, recipe_rect in self._crafting_recipe_rects():
@@ -1320,11 +2225,16 @@ class Game:
                 return
             recipe_cost = recipe.get("cost", {})
             if not self.inventory.has_items(recipe_cost):
+                self._play_sfx("ui_denied")
                 self._set_message("Recursos insuficientes.")
                 return
 
             success, message = self.crafting.craft(recipe_name, self.inventory)
-            self._set_message(message)
+            self._play_sfx("craft_success" if success else "ui_denied")
+            if success:
+                self._add_item_popups({recipe_name: int(recipe.get("amount", 1))})
+            else:
+                self._set_message(message)
             return
 
     def _set_message(self, text: str) -> None:
@@ -1352,12 +2262,17 @@ class Game:
         self.player.move(direction, dt, running)
         self.player.clamp_to_area(WORLD_WIDTH, WORLD_HEIGHT)
         self._resolve_player_collisions()
-        self.player.aim_at(self.screen_to_world(self._window_to_screen(pygame.mouse.get_pos())))
+        if self._gamepad_aim_vector.length_squared() > 0.04:
+            aim_target = pygame.Vector2(self.player.player_position) + self._gamepad_aim_vector.normalize() * 120
+            self.player.aim_at(aim_target)
+        else:
+            self.player.aim_at(self.screen_to_world(self._window_to_screen(pygame.mouse.get_pos())))
         self.player.update(dt)
 
         self._update_spawns(dt)
         self._update_zombies(dt)
         self._update_shot_impacts(dt)
+        self._update_floating_popups(dt)
         transition_used = self._handle_map_transitions(search_pressed)
         if not transition_used:
             self._handle_search(search_pressed)
@@ -1368,6 +2283,146 @@ class Game:
         if self.player.is_dead():
             self._game_over = True
             self._set_message("Game Over - pressione ESC")
+
+    def render_menu(self, dt: float) -> None:
+        if self._menu_message_timer > 0:
+            self._menu_message_timer = max(0.0, self._menu_message_timer - dt)
+
+        self._update_camera()
+        self.screen.fill(BG_COLOR)
+        self._draw_world_scene()
+        self._draw_menu_background_overlay()
+
+        if self._screen_state == "saves":
+            self._draw_saves_menu()
+        elif self._screen_state == "settings":
+            self._draw_settings_menu()
+        else:
+            self._draw_main_menu()
+
+        if self._menu_message_timer > 0:
+            text = self.font.render(self._menu_message, True, PALETTE["accent"])
+            self.screen.blit(text, text.get_rect(center=(WIDTH // 2, HEIGHT - 28)))
+
+        self._draw_gamepad_debug()
+
+        scaled_frame = pygame.transform.smoothscale(self.screen, (WINDOW_WIDTH, WINDOW_HEIGHT))
+        self.window.blit(scaled_frame, (0, 0))
+        pygame.display.flip()
+
+    def _draw_menu_background_overlay(self) -> None:
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((8, 10, 13, 176))
+        self.screen.blit(overlay, (0, 0))
+
+    def _draw_main_menu(self) -> None:
+        self._draw_menu_title()
+        mouse_pos = self._window_to_screen(pygame.mouse.get_pos())
+        save_available = save_exists(str(SAVE_GAME_PATH)) or (self._has_started_game and not self._game_over)
+        self._clamp_menu_selection()
+        for index, (action, sprite_base, rect) in enumerate(self._main_menu_button_rects()):
+            pressed = self._menu_pressed_button == action
+            sprite_state = "Pressed" if pressed else "Not-Pressed"
+            sprite = _load_ui_sprite(f"{sprite_base}_{sprite_state}.png", 3)
+            if action == "continue_game" and not save_available:
+                sprite = _dim_sprite(sprite)
+            sprite_rect = sprite.get_rect(center=(rect.centerx, rect.centery + (2 if pressed else 0)))
+            if rect.collidepoint(mouse_pos) or index == self._menu_selected_index:
+                pygame.draw.rect(self.screen, PALETTE["accent"], rect.inflate(12, 8), 2)
+            self.screen.blit(sprite, sprite_rect)
+
+    def _draw_menu_title(self) -> None:
+        ticks = pygame.time.get_ticks() / 1000.0
+        bob = int(2 * pygame.math.Vector2(0, 1).rotate(ticks * 55).y)
+        title = "RUA MORTA"
+        shadow = self.title_font.render(title, True, (22, 24, 29))
+        accent = self.title_font.render(title, True, PALETTE["accent"])
+        text = self.title_font.render(title, True, PALETTE["text"])
+        title_rect = text.get_rect(center=(WIDTH // 2, 70 + bob))
+        self.screen.blit(shadow, title_rect.move(5, 5))
+        self.screen.blit(accent, title_rect.move(-2, 2))
+        self.screen.blit(text, title_rect)
+        if int(ticks * 4) % 9 == 0:
+            glitch = self.title_font.render(title, True, PALETTE["danger"])
+            self.screen.blit(glitch, title_rect.move(3, -2), special_flags=pygame.BLEND_RGBA_ADD)
+
+        subtitle = self.small_font.render("SOBREVIVENCIA ZUMBI", True, PALETTE["text_soft"])
+        self.screen.blit(subtitle, subtitle.get_rect(center=(WIDTH // 2, 118)))
+
+    def _draw_menu_panel(self, rect: pygame.Rect) -> None:
+        panel = pygame.Surface(rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(panel, (*PALETTE["panel"], 232), panel.get_rect())
+        pygame.draw.rect(panel, PALETTE["panel_edge"], panel.get_rect(), 2)
+        pygame.draw.rect(panel, (28, 34, 37, 210), panel.get_rect().inflate(-10, -10), 1)
+        self.screen.blit(panel, rect)
+
+    def _draw_saves_menu(self) -> None:
+        panel_rect = pygame.Rect(0, 0, 510, 390 if self._has_started_game else 320)
+        panel_rect.center = (WIDTH // 2, HEIGHT // 2 + 18)
+        self._draw_menu_panel(panel_rect)
+        title = self.menu_font.render("SAVES", True, PALETTE["text"])
+        self.screen.blit(title, title.get_rect(center=(WIDTH // 2, panel_rect.y + 38)))
+
+        slot_rect = pygame.Rect(panel_rect.x + 54, panel_rect.y + 78, panel_rect.width - 108, 72)
+        pygame.draw.rect(self.screen, (43, 46, 48), slot_rect)
+        pygame.draw.rect(self.screen, PALETTE["panel_edge"], slot_rect, 2)
+        status = "SAVE ENCONTRADO" if save_exists(str(SAVE_GAME_PATH)) else "SLOT VAZIO"
+        slot_title = self.font.render("SLOT 1", True, PALETTE["accent"])
+        slot_status = self.small_font.render(status, True, PALETTE["text_soft"])
+        self.screen.blit(slot_title, (slot_rect.x + 18, slot_rect.y + 14))
+        self.screen.blit(slot_status, (slot_rect.x + 18, slot_rect.y + 42))
+
+        mouse_pos = self._window_to_screen(pygame.mouse.get_pos())
+        self._clamp_menu_selection()
+        for index, (action, label, rect) in enumerate(self._saves_menu_button_rects()):
+            enabled = action != "load" or save_exists(str(SAVE_GAME_PATH))
+            self._draw_blank_menu_button(rect, label, rect.collidepoint(mouse_pos) or index == self._menu_selected_index, enabled)
+
+    def _draw_settings_menu(self) -> None:
+        panel_rect = pygame.Rect(0, 0, 560, 400)
+        panel_rect.center = (WIDTH // 2, HEIGHT // 2 + 18)
+        self._draw_menu_panel(panel_rect)
+        title = self.menu_font.render("CONFIGURACOES", True, PALETTE["text"])
+        self.screen.blit(title, title.get_rect(center=(WIDTH // 2, panel_rect.y + 42)))
+
+        for key, label, rect in self._settings_slider_rects():
+            value = self._settings.get(key, 0)
+            selected = key == self._current_menu_actions()[self._menu_selected_index % len(self._current_menu_actions())]
+            label_text = self.font.render(label, True, PALETTE["text"])
+            value_text = self.font.render(f"{value:03d}", True, PALETTE["accent"])
+            if selected:
+                pygame.draw.rect(self.screen, PALETTE["accent"], rect.inflate(150, 28), 2)
+            self.screen.blit(label_text, (rect.x - 112, rect.y - 7))
+            self.screen.blit(value_text, (rect.right + 24, rect.y - 7))
+            pygame.draw.rect(self.screen, (37, 41, 42), rect)
+            pygame.draw.rect(self.screen, PALETTE["panel_edge"], rect, 2)
+            fill_rect = rect.copy()
+            fill_rect.width = int(rect.width * (value / 100))
+            pygame.draw.rect(self.screen, PALETTE["accent"], fill_rect.inflate(-4, -4))
+            knob_x = rect.left + int(rect.width * (value / 100))
+            knob_rect = pygame.Rect(0, 0, 12, 28)
+            knob_rect.center = (knob_x, rect.centery)
+            pygame.draw.rect(self.screen, PALETTE["text"], knob_rect)
+            pygame.draw.rect(self.screen, PALETTE["bg_deep"], knob_rect, 2)
+
+        mouse_pos = self._window_to_screen(pygame.mouse.get_pos())
+        back_rect = self._settings_back_button_rect()
+        back_selected = self._current_menu_actions()[self._menu_selected_index % len(self._current_menu_actions())] == "back"
+        self._draw_blank_menu_button(back_rect, "VOLTAR", back_rect.collidepoint(mouse_pos) or back_selected, True)
+
+    def _draw_blank_menu_button(self, rect: pygame.Rect, label: str, hover: bool, enabled: bool = True) -> None:
+        pressed = self._menu_pressed_button == label.lower()
+        sprite_name = "Blank_Pressed.png" if pressed else "Blank_Not-Pressed.png"
+        sprite = _load_ui_sprite(sprite_name, 3)
+        if not enabled:
+            sprite = _dim_sprite(sprite)
+        sprite_rect = sprite.get_rect(center=(rect.centerx, rect.centery + (2 if pressed else 0)))
+        if hover and enabled:
+            pygame.draw.rect(self.screen, PALETTE["accent"], rect.inflate(10, 8), 2)
+        self.screen.blit(sprite, sprite_rect)
+        color = PALETTE["text"] if enabled else (112, 116, 116)
+        text = self.menu_font.render(label, True, color)
+        self.screen.blit(text, text.get_rect(center=sprite_rect.center))
 
     def _resolve_player_collisions(self) -> None:
         if not self.collision_rects:
@@ -1526,6 +2581,22 @@ class Game:
     def render(self, dt: float) -> None:
         self._update_camera()
         self.screen.fill(BG_COLOR)
+        self._draw_world_scene()
+
+        self._draw_crosshair()
+        self._draw_interact_hint()
+        self._draw_ui()
+        self._draw_damage_overlay()
+        self._draw_gamepad_debug()
+
+        if self._message_timer > 0:
+            self._message_timer = max(0.0, self._message_timer - dt)
+
+        scaled_frame = pygame.transform.smoothscale(self.screen, (WINDOW_WIDTH, WINDOW_HEIGHT))
+        self.window.blit(scaled_frame, (0, 0))
+        pygame.display.flip()
+
+    def _draw_world_scene(self) -> None:
         self._draw_ground()
 
         world_drawables: List[Tuple[float, int, object]] = []
@@ -1542,17 +2613,8 @@ class Game:
         for _, _, drawable in sorted(world_drawables, key=lambda item: (item[0], item[1])):
             drawable.draw(self.screen, self._camera)
 
-        self._draw_crosshair()
-        self._draw_prompt()
-        self._draw_ui()
-        self._draw_damage_overlay()
-
-        if self._message_timer > 0:
-            self._message_timer = max(0.0, self._message_timer - dt)
-
-        scaled_frame = pygame.transform.smoothscale(self.screen, (WINDOW_WIDTH, WINDOW_HEIGHT))
-        self.window.blit(scaled_frame, (0, 0))
-        pygame.display.flip()
+        for popup in self._floating_popups:
+            popup.draw(self.screen, self._camera, self.font)
 
     def _update_camera(self) -> None:
         player_pos = pygame.Vector2(self.player.player_position)
@@ -1563,7 +2625,8 @@ class Game:
         if WORLD_HEIGHT <= HEIGHT:
             self._camera.y = (WORLD_HEIGHT - HEIGHT) / 2
         else:
-            self._camera.y = max(0, min(WORLD_HEIGHT - HEIGHT, player_pos.y - (HEIGHT / 2)))
+            max_camera_y = WORLD_HEIGHT - HEIGHT + BOTTOM_WORLD_PADDING
+            self._camera.y = max(0, min(max_camera_y, player_pos.y - (HEIGHT / 2)))
 
     def screen_to_world(self, screen_position: Tuple[int, int]) -> pygame.Vector2:
         return pygame.Vector2(screen_position) + self._camera
@@ -1579,9 +2642,6 @@ class Game:
     def _draw_ground(self) -> None:
         if self.tile_map is not None:
             self.tile_map.draw(self.screen, self._camera)
-            self._draw_base_area()
-            border_rect = pygame.Rect(-self._camera.x, -self._camera.y, WORLD_WIDTH, WORLD_HEIGHT)
-            pygame.draw.rect(self.screen, PALETTE["border"], border_rect, 8)
             return
 
         tile_size = 64
@@ -1594,25 +2654,16 @@ class Game:
                 pygame.draw.rect(self.screen, tile_color, rect)
                 pygame.draw.rect(self.screen, PALETTE["bg_deep"], rect, 1)
 
-        self._draw_base_area()
-        border_rect = pygame.Rect(-self._camera.x, -self._camera.y, WORLD_WIDTH, WORLD_HEIGHT)
-        pygame.draw.rect(self.screen, PALETTE["border"], border_rect, 8)
-
-    def _draw_base_area(self) -> None:
-        draw_pos = self._base_position - self._camera
-        aura_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        pygame.draw.circle(aura_surface, (*PALETTE["safe_fill"], 50), draw_pos, SAFE_ZONE_RADIUS)
-        self.screen.blit(aura_surface, (0, 0))
-        pygame.draw.circle(self.screen, PALETTE["safe_ring"], draw_pos, SAFE_ZONE_RADIUS, 2)
-        pygame.draw.circle(self.screen, PALETTE["safe_core"], draw_pos, 22)
-        pygame.draw.circle(self.screen, PALETTE["safe_fill"], draw_pos, 22, 4)
-
     def _draw_crosshair(self) -> None:
-        mouse_pos = self._window_to_screen(pygame.mouse.get_pos())
-        pygame.draw.circle(self.screen, (220, 220, 220), mouse_pos, 6, 1)
+        if self._gamepad_aim_vector.length_squared() > 0.04:
+            world_pos = pygame.Vector2(self.player.player_position) + self._gamepad_aim_vector.normalize() * 120
+            crosshair_pos = world_pos - self._camera
+        else:
+            crosshair_pos = pygame.Vector2(self._window_to_screen(pygame.mouse.get_pos()))
+        pygame.draw.circle(self.screen, (220, 220, 220), (round(crosshair_pos.x), round(crosshair_pos.y)), 6, 1)
 
-    def _draw_prompt(self) -> None:
-        prompt = ""
+    def _draw_interact_hint(self) -> None:
+        hint_position: pygame.Vector2 | None = None
         corpse = self._find_nearest_corpse()
         node = self._find_nearest_node()
         door = None if self._inside_interior else self._find_nearest_trigger(self.doors, DOOR_RANGE)
@@ -1625,29 +2676,22 @@ class Game:
             )
 
         if near_interior_exit:
-            prompt = "E sair do predio"
+            hint_position = self._interior_exit.position if self._interior_exit is not None else None
         elif door is not None:
-            prompt = "E entrar no predio"
+            hint_position = door.position
         elif exit_trigger is not None:
-            prompt = "Saida para o proximo mapa"
+            hint_position = exit_trigger.position
         elif corpse is not None:
-            prompt = "E vasculhar corpo"
+            hint_position = corpse.position
         elif node is not None:
-            label = NODE_TYPES[node.node_type]["label"]
-            prompt = f"E buscar em {label}"
+            hint_position = node.position
 
-        if not prompt:
+        if hint_position is None:
             return
 
-        text = self.small_font.render(prompt, True, PALETTE["accent"])
-        bg_rect = pygame.Rect(0, 0, text.get_width() + 24, 28)
-        bg_rect.center = (WIDTH // 2, HEIGHT - 26)
-        panel = pygame.Surface(bg_rect.size, pygame.SRCALPHA)
-        pygame.draw.rect(panel, (*PALETTE["panel"], 220), panel.get_rect(), border_radius=8)
-        pygame.draw.rect(panel, (*PALETTE["accent"], 200), panel.get_rect(), 1, border_radius=8)
-        self.screen.blit(panel, bg_rect.topleft)
-        text_rect = text.get_rect(center=bg_rect.center)
-        self.screen.blit(text, text_rect)
+        screen_pos = hint_position - self._camera + pygame.Vector2(0, -34)
+        text = self.menu_font.render("E", True, PALETTE["accent"])
+        self.screen.blit(text, text.get_rect(center=(round(screen_pos.x), round(screen_pos.y))))
 
     def _draw_damage_overlay(self) -> None:
         if self.player.hit_flash_timer <= 0 and self.player.heal_flash_timer <= 0:
@@ -1661,6 +2705,43 @@ class Game:
             alpha = int(90 * (self.player.heal_flash_timer / 0.25))
             overlay.fill((62, 136, 90, alpha))
         self.screen.blit(overlay, (0, 0))
+
+    def _draw_gamepad_debug(self) -> None:
+        if not self._show_gamepad_debug:
+            return
+
+        gamepad = self._get_gamepad()
+        if gamepad is None:
+            lines = ["Controle: nenhum", "F2 ou botao PS/touchpad fecha"]
+        else:
+            try:
+                name = gamepad.get_name()
+            except (AttributeError, pygame.error):
+                name = "controle"
+            axis_count = self._gamepad_axis_count(gamepad)
+            axes = [f"{index}:{self._gamepad_axis(gamepad, index):+.2f}" for index in range(axis_count)]
+            buttons = sorted(self._poll_gamepad_buttons(gamepad))
+            mapping = "SDL" if self._uses_sdl_gamepad_mapping(gamepad) else "raw/web"
+            right_pair = self._right_stick_axes if self._right_stick_axes is not None else "auto"
+            lines = [
+                f"Controle: {name} ({mapping})",
+                "Eixos: " + " ".join(axes),
+                "Botoes: " + (" ".join(str(button) for button in buttons) if buttons else "-"),
+                f"Mira dir: {right_pair}  vetor {self._gamepad_aim_vector.x:+.2f},{self._gamepad_aim_vector.y:+.2f}",
+                "F2 ou botao PS/touchpad fecha",
+            ]
+
+        padding = 10
+        line_height = self.small_font.get_height() + 4
+        width = max(self.small_font.size(line)[0] for line in lines) + padding * 2
+        height = line_height * len(lines) + padding * 2
+        panel = pygame.Surface((width, height), pygame.SRCALPHA)
+        panel.fill((7, 10, 12, 210))
+        pygame.draw.rect(panel, PALETTE["accent"], panel.get_rect(), 1)
+        self.screen.blit(panel, (12, 92))
+        for index, line in enumerate(lines):
+            text = self.small_font.render(line, True, PALETTE["text"])
+            self.screen.blit(text, (12 + padding, 92 + padding + index * line_height))
 
     def _draw_ui(self) -> None:
         self._draw_icon_meter(
@@ -1687,12 +2768,6 @@ class Game:
             self._draw_inventory_panel()
         if self._show_crafting:
             self._draw_crafting_panel()
-        if self._show_help:
-            self._draw_help_panel()
-
-        if self._message_timer > 0:
-            msg = self.font.render(self._message, True, (255, 210, 80))
-            self.screen.blit(msg, (10, HEIGHT - 30))
 
     def _draw_quick_access_bar(self) -> None:
         scale = 3
@@ -1801,7 +2876,7 @@ class Game:
         if icon_name is not None:
             icon_scale = 3 if slot_rect.width <= 64 else 4
             icon = _load_ui_sprite(icon_name, icon_scale)
-            icon_rect = icon.get_rect(center=(slot_rect.centerx, slot_rect.centery - (8 if quantity > 1 else 0)))
+            icon_rect = icon.get_rect(center=slot_rect.center)
             self.screen.blit(icon, icon_rect)
         else:
             label = ITEM_LABELS.get(item_name, item_name[:3]).upper()
@@ -1810,7 +2885,7 @@ class Game:
 
         if quantity > 1:
             qty_text = self.small_font.render(str(quantity), True, text_color)
-            qty_rect = qty_text.get_rect(bottomright=(slot_rect.right - 6, slot_rect.bottom - 5))
+            qty_rect = qty_text.get_rect(topright=(slot_rect.right - 5, slot_rect.top + 3))
             self.screen.blit(qty_text, qty_rect)
         if not available:
             overlay = pygame.Surface(slot_rect.size, pygame.SRCALPHA)
@@ -1952,43 +3027,6 @@ class Game:
                 icon = empty_icon
             self.screen.blit(icon, (x + index * spacing, y))
 
-    def _draw_help_panel(self) -> None:
-        panel_width = 420
-        panel_height = 260
-        panel_x = (WIDTH - panel_width) // 2
-        panel_y = HEIGHT - panel_height - 18
-        panel = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
-        pygame.draw.rect(panel, (*PALETTE["panel"], 232), panel.get_rect(), border_radius=10)
-        pygame.draw.rect(panel, PALETTE["panel_edge"], panel.get_rect(), 1, border_radius=10)
-        self.screen.blit(panel, (panel_x, panel_y))
-
-        title = self.font.render("Ajuda", True, PALETTE["text"])
-        self.screen.blit(title, (panel_x + 14, panel_y + 12))
-
-        help_lines = [
-            "WASD mover | Shift correr | Clique/SPACE atacar",
-            "E vasculhar pontos, carros, natureza e portas",
-            "Mouse wheel ou 1-6 navega atalhos rapidos",
-            "B abre crafting | C usa item, entra ou vasculha",
-            "Q ainda usa cura/comida",
-            "F5 salvar | F9 carregar",
-            "Objetivo: explorar, lootear e seguir vivo",
-            "Feche este painel com H",
-        ]
-
-        y = panel_y + 46
-        for line in help_lines:
-            text = self.small_font.render(line, True, PALETTE["text"])
-            self.screen.blit(text, (panel_x + 14, y))
-            y += 26
-
-    def run(self) -> None:
-        while self.is_game_running:
-            dt = self.clock.tick(60) / 1000.0
-            direction, running, craft_pressed, search_pressed, attack_pressed, heal_pressed = self.process_input()
-            self.update_game_state(direction, running, craft_pressed, search_pressed, attack_pressed, heal_pressed, dt)
-            self.render(dt)
-
     def _get_selected_recipe(self) -> str:
         if not self._recipe_names:
             return "taco"
@@ -1998,7 +3036,7 @@ class Game:
         if not self._recipe_names:
             return
         self._selected_recipe_index = (self._selected_recipe_index + 1) % len(self._recipe_names)
-        self._set_message(f"Receita: {self._get_selected_recipe()}")
+        self._play_sfx("inventory_move")
 
     def _cycle_quick_slot(self, direction: int) -> None:
         if not self._quick_slots or direction == 0:
@@ -2013,20 +3051,35 @@ class Game:
         if item_name in WEAPON_ITEMS:
             self._equip_weapon(item_name)
             return
-        label = ITEM_LABELS.get(item_name, item_name).lower()
-        quantity = self.inventory.get_quantity(item_name)
-        suffix = f" x{quantity}" if quantity > 0 else " vazio"
-        self._set_message(f"Atalho: {label}{suffix}")
+        self._play_sfx("inventory_move")
 
     def _equip_weapon(self, weapon_name: str) -> None:
         if weapon_name not in WEAPONS:
             return
         if self.inventory.get_quantity(weapon_name) <= 0:
-            self._set_message("Arma nao disponivel.")
+            self._play_sfx("ui_denied")
             return
         self.player.current_weapon = weapon_name
-        self._set_message(f"Arma equipada: {weapon_name}")
+        self._play_sfx("inventory_move")
+
+    async def run(self) -> None:
+        while self.is_game_running:
+            dt = self.clock.tick(60) / 1000.0
+            if IS_WEB:
+                await asyncio.sleep(0)
+            if self._screen_state == "playing":
+                direction, running, craft_pressed, search_pressed, attack_pressed, heal_pressed = self.process_input()
+                self.update_game_state(direction, running, craft_pressed, search_pressed, attack_pressed, heal_pressed, dt)
+                self.render(dt)
+            else:
+                self.process_menu_input()
+                self.render_menu(dt)
+        pygame.quit()
+
+
+async def main() -> None:
+    await Game().run()
 
 
 if __name__ == "__main__":
-    Game().run()
+    asyncio.run(main())

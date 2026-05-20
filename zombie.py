@@ -70,6 +70,7 @@ class Zombie:
     _death_variant: str = field(default="death_1", init=False, repr=False)
     _death_finished: bool = field(default=False, init=False, repr=False)
     _attack_has_hit: bool = field(default=False, init=False, repr=False)
+    _attack_started: bool = field(default=False, init=False, repr=False)
     _attack_start_position: pygame.Vector2 = field(default_factory=pygame.Vector2, init=False, repr=False)
     _attack_target_position: pygame.Vector2 = field(default_factory=pygame.Vector2, init=False, repr=False)
     _retreat_timer: float = field(default=0.0, init=False, repr=False)
@@ -227,6 +228,7 @@ class Zombie:
             self._attack_has_hit = False
 
         self._attack_variant = self._choose_attack_variant(distance, force_lunge)
+        self._attack_started = True
         self._attack_start_position = self.position.copy()
         self._attack_target_position = self.position.copy()
 
@@ -268,6 +270,18 @@ class Zombie:
 
     def is_dying(self) -> bool:
         return self.health <= 0
+
+    def consume_attack_started(self) -> bool:
+        started = self._attack_started
+        self._attack_started = False
+        return started
+
+    def attack_sfx_name(self) -> str:
+        if self.zombie_type == "small" and self._attack_variant == "attack_2":
+            return "zombie_small_dash"
+        if self.zombie_type == "big":
+            return "zombie_big_attack"
+        return "zombie_normal_attack"
 
     def can_be_searched(self) -> bool:
         return self._death_finished and not self.corpse_searched and self.corpse_timer > 0

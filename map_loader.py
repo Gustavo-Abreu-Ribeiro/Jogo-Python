@@ -55,6 +55,8 @@ class TileSet:
     tilecount: int
     image_path: Path | None
     tile_image_paths: dict[int, Path]
+    tile_offset_x: int = 0
+    tile_offset_y: int = 0
     image: pygame.Surface | None = None
 
     @property
@@ -119,6 +121,10 @@ class TiledMap:
             if image_element is not None:
                 image_path = (tsx_path.parent / image_element.attrib["source"]).resolve()
 
+            tile_offset = root.find("tileoffset")
+            tile_offset_x = int(tile_offset.attrib.get("x", 0)) if tile_offset is not None else 0
+            tile_offset_y = int(tile_offset.attrib.get("y", 0)) if tile_offset is not None else 0
+
             for tile_element in root.findall("tile"):
                 tile_image = tile_element.find("image")
                 if tile_image is None:
@@ -135,6 +141,8 @@ class TiledMap:
                     tilecount=tilecount,
                     image_path=image_path,
                     tile_image_paths=tile_image_paths,
+                    tile_offset_x=tile_offset_x,
+                    tile_offset_y=tile_offset_y,
                     image=self._load_tileset_image(image_path),
                 )
             )
@@ -179,10 +187,12 @@ class TiledMap:
                         pygame.Rect(world_x, world_y, self.render_tile_width, self.render_tile_height)
                     )
 
-                tile = self._get_tile_surface(raw_gid)
+                tile, tileset = self._get_tile_surface(raw_gid)
                 if tile is not None:
-                    draw_x = world_x + ((self.render_tile_width - tile.get_width()) // 2)
-                    draw_y = world_y + self.render_tile_height - tile.get_height()
+                    offset_x = tileset.tile_offset_x * self.scale if tileset is not None else 0
+                    offset_y = tileset.tile_offset_y * self.scale if tileset is not None else 0
+                    draw_x = world_x + offset_x
+                    draw_y = world_y + self.render_tile_height - tile.get_height() + offset_y
                     tiles.append((draw_x, draw_y, tile))
                 else:
                     unrendered_tiles += 1
@@ -198,23 +208,24 @@ class TiledMap:
                 elif trigger.trigger_type == "exit":
                     self.exit_triggers.append(trigger)
 
-    def _get_tile_surface(self, raw_gid: int) -> pygame.Surface | None:
+    def _get_tile_surface(self, raw_gid: int) -> tuple[pygame.Surface | None, TileSet | None]:
         gid = raw_gid & TILED_GID_MASK
         flipped_h = bool(raw_gid & TILED_FLIP_H)
         flipped_v = bool(raw_gid & TILED_FLIP_V)
         cache_key = (gid, flipped_h, flipped_v)
-        if cache_key in self._tile_cache:
-            return self._tile_cache[cache_key]
 
         tileset = self._find_tileset(gid)
         if tileset is None:
-            return None
+            return None, None
+
+        if cache_key in self._tile_cache:
+            return self._tile_cache[cache_key], tileset
 
         local_id = gid - tileset.firstgid
         if local_id in tileset.tile_image_paths:
             tile = self._load_tileset_image(tileset.tile_image_paths[local_id])
             if tile is None:
-                return None
+                return None, tileset
         elif tileset.image is not None and tileset.columns > 0:
             source_x = (local_id % tileset.columns) * tileset.tile_width
             source_y = (local_id // tileset.columns) * tileset.tile_height
@@ -225,7 +236,7 @@ class TiledMap:
                 pygame.Rect(source_x, source_y, tileset.tile_width, tileset.tile_height),
             )
         else:
-            return None
+            return None, tileset
 
         if flipped_h or flipped_v:
             tile = pygame.transform.flip(tile, flipped_h, flipped_v)
@@ -233,7 +244,7 @@ class TiledMap:
             tile = pygame.transform.scale(tile, (tile.get_width() * self.scale, tile.get_height() * self.scale))
 
         self._tile_cache[cache_key] = tile
-        return tile
+        return tile, tileset
 
     def _find_tileset(self, gid: int) -> TileSet | None:
         for tileset in reversed(self.tilesets):
@@ -339,5 +350,6 @@ class TiledMap:
 
         for layer in self.layers:
             for world_x, world_y, tile in layer.tiles:
-                if view_rect.collidepoint(world_x, world_y):
+                tile_rect = pygame.Rect(world_x, world_y, tile.get_width(), tile.get_height())
+                if view_rect.colliderect(tile_rect):
                     surface.blit(tile, (world_x - camera_offset.x, world_y - camera_offset.y))
