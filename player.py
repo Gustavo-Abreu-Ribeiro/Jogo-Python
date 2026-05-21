@@ -15,6 +15,16 @@ LOADOUTS = {
     "pistola": {"root": CHARACTER_ROOT / "Guns" / "Pistol", "prefix": "Pistol"},
     "escopeta": {"root": CHARACTER_ROOT / "Guns" / "Shotgun", "prefix": "Shotgun"},
 }
+LOADOUT_ALIASES = {
+    "pistola_incendiaria": "pistola",
+    "pistola_perfurante": "pistola",
+    "escopeta_incendiaria": "escopeta",
+}
+WEAPON_TINTS = {
+    "pistola_incendiaria": (255, 118, 72),
+    "pistola_perfurante": (92, 178, 255),
+    "escopeta_incendiaria": (255, 96, 70),
+}
 WEAPON_LAYER_OFFSETS = {
     "taco": {
         "down": (0, -12),
@@ -111,6 +121,11 @@ class Player:
             weapon_layers = cls._load_loadout_sprites(loadout_name, LOADOUTS[loadout_name], include_no_hands=False)
             cls._sprite_cache[loadout_name] = cls._compose_weapon_loadout(loadout_name, main_body, weapon_layers)
 
+        for variant_name, base_name in LOADOUT_ALIASES.items():
+            weapon_layers = cls._load_loadout_sprites(base_name, LOADOUTS[base_name], include_no_hands=False)
+            weapon_layers = cls._tint_weapon_layers(weapon_layers, WEAPON_TINTS[variant_name])
+            cls._sprite_cache[variant_name] = cls._compose_weapon_loadout(variant_name, main_body, weapon_layers)
+
         if "maos" not in cls._sprite_cache or "idle" not in cls._sprite_cache["maos"]:
             raise FileNotFoundError(f"Nenhuma spritesheet do personagem encontrada em {CHARACTER_ROOT}")
 
@@ -193,7 +208,8 @@ class Player:
         loadout_name: str,
         direction: str,
     ) -> pygame.Surface:
-        offset_x, offset_y = WEAPON_LAYER_OFFSETS.get(loadout_name, {}).get(direction, (0, 0))
+        offset_source = LOADOUT_ALIASES.get(loadout_name, loadout_name)
+        offset_x, offset_y = WEAPON_LAYER_OFFSETS.get(offset_source, {}).get(direction, (0, 0))
         offset_y += EQUIPPED_WEAPON_Y_SHIFT
         width = max(body.get_width(), weapon_layer.get_width())
         height = max(body.get_height(), weapon_layer.get_height() + abs(offset_y))
@@ -207,6 +223,26 @@ class Player:
             frame.blit(body, body_rect)
             frame.blit(weapon_layer, weapon_rect)
         return frame
+
+    @classmethod
+    def _tint_weapon_layers(
+        cls,
+        weapon_layers: dict[str, dict[str, list[pygame.Surface]]],
+        color: tuple[int, int, int],
+    ) -> dict[str, dict[str, list[pygame.Surface]]]:
+        tinted_layers: dict[str, dict[str, list[pygame.Surface]]] = {}
+        for animation, directions in weapon_layers.items():
+            for direction, frames in directions.items():
+                tinted_layers.setdefault(animation, {})[direction] = [cls._tint_sprite(frame, color) for frame in frames]
+        return tinted_layers
+
+    @staticmethod
+    def _tint_sprite(sprite: pygame.Surface, color: tuple[int, int, int]) -> pygame.Surface:
+        tinted = sprite.copy()
+        overlay = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
+        overlay.fill((*color, 0))
+        tinted.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+        return tinted
 
     @classmethod
     def _load_spritesheet(cls, path: Path, frame_count: int) -> list[pygame.Surface]:

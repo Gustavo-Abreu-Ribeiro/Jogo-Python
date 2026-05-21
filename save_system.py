@@ -21,7 +21,13 @@ def _web_storage() -> object | None:
         return None
 
 
-def save_game(file_path: str, player: Player, inventory: Inventory, game_time: float) -> None:
+def save_game(
+    file_path: str,
+    player: Player,
+    inventory: Inventory,
+    game_time: float,
+    quick_slots: list[str] | None = None,
+) -> None:
     data: Dict[str, Any] = {
         "player_health": player.player_health,
         "player_hunger": player.player_hunger,
@@ -30,6 +36,8 @@ def save_game(file_path: str, player: Player, inventory: Inventory, game_time: f
         "game_time": game_time,
         "current_weapon": player.current_weapon,
     }
+    if quick_slots is not None:
+        data["quick_slots"] = list(quick_slots)
     storage = _web_storage()
     if storage is not None:
         storage.setItem(WEB_SAVE_KEY, json.dumps(data))

@@ -18,7 +18,7 @@ from inventory import Inventory
 from map_loader import TiledMap
 from player import Player
 from save_system import load_game, save_exists, save_game
-from weapons import WEAPONS
+from weapons import WEAPONS, WEAPON_FAMILIES, WEAPON_ITEMS
 from zombie import Zombie
 
 
@@ -88,6 +88,8 @@ RAW_GAMEPAD_DPAD_LEFT = 14
 RAW_GAMEPAD_DPAD_RIGHT = 15
 RAW_GAMEPAD_GUIDE = 16
 RAW_GAMEPAD_TOUCHPAD = 17
+GAMEPAD_RESCAN_INTERVAL_MS = 600
+GAMEPAD_DISCONNECT_GRACE_MS = 1400
 
 SFX_FILES = {
     "craft_success": "craft_success.wav",
@@ -197,14 +199,34 @@ NODE_TYPES: Dict[str, Dict[str, object]] = {
     "carro": {
         "label": "Carro abandonado",
         "color": (120, 132, 138),
-        "loot": ["metal", "metal", "balas", "balas", "balas", "pistola", "polvora", "comida"],
+        "loot": [
+            "metal",
+            "metal",
+            "balas",
+            "balas",
+            "balas",
+            "pistola",
+            "pistola_perfurante",
+            "polvora",
+            "comida",
+        ],
         "drops": (0, 4),
         "ambush": 0.18,
     },
     "edificio": {
         "label": "Predio abandonado",
         "color": (155, 142, 91),
-        "loot": ["pano", "balas", "balas", "balas", "polvora", "pistola", "pistola", "escopeta", "kit_medico"],
+        "loot": [
+            "pano",
+            "balas",
+            "cartuchos",
+            "polvora",
+            "pistola",
+            "pistola_incendiaria",
+            "escopeta",
+            "escopeta_incendiaria",
+            "kit_medico",
+        ],
         "drops": (2, 5),
         "ambush": 0.22,
     },
@@ -226,11 +248,18 @@ INVENTORY_ITEM_ORDER = [
     "erva",
     "polvora",
     "balas",
+    "balas_incendiarias",
+    "balas_perfurantes",
+    "cartuchos",
+    "cartuchos_incendiarios",
     "comida",
     "kit_medico",
     "taco",
     "pistola",
+    "pistola_incendiaria",
+    "pistola_perfurante",
     "escopeta",
+    "escopeta_incendiaria",
 ]
 ITEM_LABELS = {
     "madeira": "MAD",
@@ -239,12 +268,19 @@ ITEM_LABELS = {
     "erva": "ERV",
     "polvora": "POL",
     "balas": "BAL",
+    "balas_incendiarias": "BFI",
+    "balas_perfurantes": "BPE",
+    "cartuchos": "CAR",
+    "cartuchos_incendiarios": "CFI",
     "comida": "COM",
     "kit_medico": "KIT",
     "maos": "MAO",
     "taco": "TAC",
     "pistola": "PIS",
+    "pistola_incendiaria": "PIF",
+    "pistola_perfurante": "PPE",
     "escopeta": "ESC",
+    "escopeta_incendiaria": "ESF",
 }
 ITEM_ICONS = {
     "madeira": "Icon_Wooden-wall.png",
@@ -253,14 +289,35 @@ ITEM_ICONS = {
     "erva": "Icon_Bandage.png",
     "polvora": "Icon_Bullet-crate_Red.png",
     "balas": "Icon_Bullet-box_Red.png",
+    "balas_incendiarias": "Icon_Bullet-box_Green.png",
+    "balas_perfurantes": "Icon_Bullet-box_Blue.png",
+    "cartuchos": "Icon_Bullet-crate_Red.png",
+    "cartuchos_incendiarios": "Icon_Bullet-crate_Green.png",
     "taco": "Icon_Bat.png",
     "pistola": "Icon_Pistol.png",
+    "pistola_incendiaria": "Icon_Pistol.png",
+    "pistola_perfurante": "Icon_Pistol.png",
     "escopeta": "Icon_Shotgun.png",
+    "escopeta_incendiaria": "Icon_Shotgun.png",
     "comida": "Icon_Canned-food.png",
     "kit_medico": "Icon_First-Aid-Kit_Red.png",
 }
-WEAPON_ITEMS = {"maos", "taco", "pistola", "escopeta"}
 CONSUMABLE_ITEMS = {"comida", "kit_medico"}
+AMMO_LOOT_RANGES = {
+    "balas": (3, 8),
+    "balas_incendiarias": (2, 4),
+    "balas_perfurantes": (2, 4),
+    "cartuchos": (1, 3),
+    "cartuchos_incendiarios": (1, 2),
+}
+ITEM_TINTS = {
+    "pistola_incendiaria": (255, 132, 86),
+    "pistola_perfurante": (100, 185, 255),
+    "escopeta_incendiaria": (255, 102, 76),
+    "balas_incendiarias": (255, 132, 86),
+    "balas_perfurantes": (100, 185, 255),
+    "cartuchos_incendiarios": (255, 132, 86),
+}
 
 ZOMBIE_VARIANTS: Dict[str, Dict[str, float | int]] = {
     "axe": {"weight": 7, "speed": 1.0, "health": 1.0, "radius": 12},
@@ -476,6 +533,14 @@ def _dim_sprite(sprite: pygame.Surface) -> pygame.Surface:
     return dimmed
 
 
+def _tint_sprite(sprite: pygame.Surface, color: Tuple[int, int, int]) -> pygame.Surface:
+    tinted = sprite.copy()
+    overlay = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
+    overlay.fill((*color, 0))
+    tinted.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+    return tinted
+
+
 def _load_shot_impact_frames() -> List[pygame.Surface]:
     global _SHOT_IMPACT_CACHE
     if _SHOT_IMPACT_CACHE is not None:
@@ -567,7 +632,8 @@ class SearchNode:
         rewards: Dict[str, int] = {}
         for _ in range(drop_count):
             item = random.choice(loot_items)
-            amount = random.randint(3, 8) if item == "balas" else 1
+            amount_range = AMMO_LOOT_RANGES.get(item)
+            amount = random.randint(*amount_range) if amount_range is not None else 1
             rewards[item] = rewards.get(item, 0) + amount
 
         ambush_count = 0
@@ -608,9 +674,11 @@ class ShotImpact:
         self,
         position: Tuple[float, float] | pygame.Vector2,
         origin: Tuple[float, float] | pygame.Vector2 | None = None,
+        color: Tuple[int, int, int] = (255, 224, 120),
     ) -> None:
         self.position = pygame.Vector2(position)
         self.origin = pygame.Vector2(origin) if origin is not None else self.position.copy()
+        self.color = color
         self.animation_time = 0.0
         self.frames = _load_shot_impact_frames()
         self.fps = 18.0
@@ -631,8 +699,9 @@ class ShotImpact:
         bullet_pos = start.lerp(end, progress)
         if alpha > 0 and start.distance_to(end) > 2:
             trail = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
-            pygame.draw.line(trail, (255, 224, 120, alpha), start, end, 2)
-            pygame.draw.circle(trail, (255, 245, 190, min(255, alpha + 35)), bullet_pos, 3)
+            pygame.draw.line(trail, (*self.color, alpha), start, end, 2)
+            glow = tuple(min(255, component + 35) for component in self.color)
+            pygame.draw.circle(trail, (*glow, min(255, alpha + 35)), bullet_pos, 3)
             surface.blit(trail, (0, 0))
 
         frame_index = min(int(self.animation_time), len(self.frames) - 1)
@@ -727,6 +796,10 @@ class Game:
         self._has_started_game = False
         self._controller: object | None = None
         self._gamepad: object | None = None
+        self._gamepad_backend: str | None = None
+        self._gamepad_last_seen_ms = 0
+        self._gamepad_next_scan_ms = 0
+        self._gamepad_missing_since_ms: int | None = None
         self._gamepad_buttons_down: set[int] = set()
         self._gamepad_attack_down = False
         self._gamepad_menu_axis_y_down = False
@@ -759,7 +832,7 @@ class Game:
         self._transition_cooldown = 0.0
         self._camera = pygame.Vector2()
 
-        self._recipe_names = self.crafting.get_recipe_names()
+        self._recipe_names = self.crafting.get_recipe_names(self.inventory)
         self._selected_recipe_index = 0
         self._base_position = pygame.Vector2(WORLD_WIDTH * 0.48, WORLD_HEIGHT * 0.52)
         self._current_map_index = 0
@@ -1208,49 +1281,92 @@ class Game:
 
         return pygame.Vector2(WORLD_WIDTH // 2, WORLD_HEIGHT // 2)
 
-    def _get_gamepad(self) -> object | None:
-        if sdl_controller is not None:
-            try:
-                if not sdl_controller.get_init():
-                    sdl_controller.init()
-                if self._controller is not None:
-                    return self._controller
-                for index in range(sdl_controller.get_count()):
-                    if sdl_controller.is_controller(index):
-                        self._controller = sdl_controller.Controller(index)
-                        self._gamepad = self._controller
-                        return self._controller
-            except pygame.error:
-                self._controller = None
-
-        if not pygame.joystick.get_init():
-            pygame.joystick.init()
-        if self._gamepad is not None:
-            try:
-                if hasattr(self._gamepad, "get_attached") and not self._gamepad.get_attached():
-                    self._gamepad = None
-                else:
-                    self._gamepad.get_numaxes()
-                    self._gamepad.get_numbuttons()
-                    return self._gamepad
-            except pygame.error:
-                self._gamepad = None
-
-        if pygame.joystick.get_count() <= 0:
-            self._gamepad = None
-            return None
-
+    def _is_gamepad_live(self, gamepad: object | None) -> bool:
+        if gamepad is None:
+            return False
         try:
-            self._gamepad = pygame.joystick.Joystick(0)
-            if hasattr(self._gamepad, "get_init") and not self._gamepad.get_init():
-                self._gamepad.init()
-            if hasattr(self._gamepad, "get_attached") and not self._gamepad.get_attached():
-                self._gamepad = None
-                return None
-            if self._gamepad.get_numaxes() > 0 or self._gamepad.get_numbuttons() > 0:
-                return self._gamepad
+            if hasattr(gamepad, "get_attached") and not gamepad.get_attached():
+                return False
+            if hasattr(gamepad, "get_numaxes"):
+                gamepad.get_numaxes()
+            if hasattr(gamepad, "get_numbuttons"):
+                gamepad.get_numbuttons()
+            return True
         except pygame.error:
-            self._gamepad = None
+            return False
+
+    def _remember_gamepad(self, gamepad: object, backend: str) -> object:
+        self._gamepad = gamepad
+        self._controller = gamepad if backend == "sdl" else None
+        self._gamepad_backend = backend
+        self._gamepad_last_seen_ms = pygame.time.get_ticks()
+        self._gamepad_missing_since_ms = None
+        return gamepad
+
+    def _clear_gamepad(self) -> None:
+        self._controller = None
+        self._gamepad = None
+        self._gamepad_backend = None
+        self._gamepad_buttons_down.clear()
+        self._gamepad_attack_down = False
+        self._gamepad_aim_vector = pygame.Vector2()
+
+    def _scan_sdl_gamepad(self) -> object | None:
+        if IS_WEB or sdl_controller is None:
+            return None
+        try:
+            if not sdl_controller.get_init():
+                sdl_controller.init()
+            for index in range(sdl_controller.get_count()):
+                if sdl_controller.is_controller(index):
+                    return sdl_controller.Controller(index)
+        except pygame.error:
+            return None
+        return None
+
+    def _scan_raw_gamepad(self) -> object | None:
+        try:
+            if not pygame.joystick.get_init():
+                pygame.joystick.init()
+            if pygame.joystick.get_count() <= 0:
+                return None
+            gamepad = pygame.joystick.Joystick(0)
+            if hasattr(gamepad, "get_init") and not gamepad.get_init():
+                gamepad.init()
+            if not self._is_gamepad_live(gamepad):
+                return None
+            if self._gamepad_axis_count(gamepad) > 0 or self._gamepad_button_count(gamepad) > 0:
+                return gamepad
+        except pygame.error:
+            return None
+        return None
+
+    def _get_gamepad(self) -> object | None:
+        now = pygame.time.get_ticks()
+        if self._is_gamepad_live(self._gamepad):
+            self._gamepad_last_seen_ms = now
+            self._gamepad_missing_since_ms = None
+            return self._gamepad
+
+        if self._gamepad is not None:
+            if self._gamepad_missing_since_ms is None:
+                self._gamepad_missing_since_ms = now
+            if now - self._gamepad_missing_since_ms < GAMEPAD_DISCONNECT_GRACE_MS:
+                return self._gamepad
+            self._clear_gamepad()
+
+        if now < self._gamepad_next_scan_ms:
+            return None
+        self._gamepad_next_scan_ms = now + GAMEPAD_RESCAN_INTERVAL_MS
+
+        if self._gamepad_backend in (None, "sdl"):
+            gamepad = self._scan_sdl_gamepad()
+            if gamepad is not None:
+                return self._remember_gamepad(gamepad, "sdl")
+
+        gamepad = self._scan_raw_gamepad()
+        if gamepad is not None:
+            return self._remember_gamepad(gamepad, "raw")
         return None
 
     @staticmethod
@@ -1274,6 +1390,14 @@ class Game:
             except pygame.error:
                 return 0
         return 6
+
+    def _gamepad_button_count(self, gamepad: object) -> int:
+        if hasattr(gamepad, "get_numbuttons"):
+            try:
+                return int(gamepad.get_numbuttons())
+            except pygame.error:
+                return 0
+        return 18
 
     def _uses_sdl_gamepad_mapping(self, gamepad: object) -> bool:
         return self._controller is not None and gamepad is self._controller
@@ -1350,10 +1474,13 @@ class Game:
     def _poll_gamepad_buttons(self, gamepad: object) -> set[int]:
         buttons: set[int] = set()
         try:
-            button_count = gamepad.get_numbuttons() if hasattr(gamepad, "get_numbuttons") else 16
+            button_count = self._gamepad_button_count(gamepad)
             for index in range(button_count):
-                if gamepad.get_button(index):
-                    buttons.add(index)
+                try:
+                    if gamepad.get_button(index):
+                        buttons.add(index)
+                except pygame.error:
+                    continue
         except (AttributeError, pygame.error):
             return set()
         return buttons
@@ -1465,6 +1592,12 @@ class Game:
             self.player.current_weapon = loaded_weapon
         else:
             self.player.current_weapon = "maos"
+        loaded_quick_slots = data.get("quick_slots")
+        if isinstance(loaded_quick_slots, list) and len(loaded_quick_slots) == len(self._quick_slots):
+            self._quick_slots = [
+                str(item_name) if str(item_name) in ITEM_LABELS else fallback
+                for item_name, fallback in zip(loaded_quick_slots, self._quick_slots)
+            ]
 
     def process_input(self) -> Tuple[pygame.Vector2, bool, bool, bool, bool, bool]:
         direction = pygame.Vector2(0, 0)
@@ -1525,7 +1658,7 @@ class Game:
                 elif event.key == pygame.K_F2:
                     self._show_gamepad_debug = not self._show_gamepad_debug
                 elif event.key == pygame.K_F5:
-                    save_game(str(SAVE_GAME_PATH), self.player, self.inventory, self.game_time)
+                    save_game(str(SAVE_GAME_PATH), self.player, self.inventory, self.game_time, self._quick_slots)
                     self._play_sfx("objective")
                     self._set_message("Jogo salvo.")
                 elif event.key == pygame.K_F9:
@@ -1545,6 +1678,16 @@ class Game:
                     if self._inventory_close_button_rect().collidepoint(mouse_pos):
                         self._show_inventory = False
                         self._play_sfx("ui_close")
+                    else:
+                        quick_slot_index = self._quick_slot_index_at(mouse_pos)
+                        if quick_slot_index is not None:
+                            self._selected_quick_slot = quick_slot_index
+                            self._play_sfx("inventory_move")
+                            continue
+
+                        inventory_item = self._inventory_item_at(mouse_pos)
+                        if inventory_item is not None:
+                            self._assign_quick_slot_item(inventory_item)
                     continue
                 if self._show_crafting:
                     self._handle_crafting_click(mouse_pos)
@@ -1796,7 +1939,7 @@ class Game:
                     self._play_sfx("ui_denied")
                     self._set_menu_message("Nenhum save encontrado.")
             elif action == "save_current":
-                save_game(str(SAVE_GAME_PATH), self.player, self.inventory, self.game_time)
+                save_game(str(SAVE_GAME_PATH), self.player, self.inventory, self.game_time, self._quick_slots)
                 self._play_sfx("objective")
                 self._set_menu_message("Jogo salvo no Slot 1.")
             elif action == "back":
@@ -1958,11 +2101,11 @@ class Game:
             rewards: Dict[str, int] = {}
             for _ in range(random.randint(1, 2)):
                 item = random.choice(["pano", "balas", "balas", "polvora", "comida"])
-                amount = random.randint(2, 6) if item == "balas" else 1
+                amount_range = AMMO_LOOT_RANGES.get(item)
+                amount = random.randint(*amount_range) if amount_range is not None else 1
                 rewards[item] = rewards.get(item, 0) + amount
-            for item, amount in rewards.items():
-                self.inventory.add_item(item, amount)
-            self._add_item_popups(rewards, corpse.position)
+            granted = self._grant_rewards(rewards)
+            self._add_item_popups(granted, corpse.position)
             return
 
         node = self._find_nearest_node()
@@ -1978,17 +2121,44 @@ class Game:
         else:
             self._play_sfx("pickup_item")
         rewards, ambush_count = node.search()
-        for item, amount in rewards.items():
-            self.inventory.add_item(item, amount)
-        if rewards:
-            self._play_sfx("pickup_ammo" if "balas" in rewards else "pickup_item")
-            self._add_item_popups(rewards, node.position)
+        granted = self._grant_rewards(rewards)
+        if granted:
+            self._play_sfx("pickup_ammo" if any(item in AMMO_LOOT_RANGES for item in granted) else "pickup_item")
+            self._add_item_popups(granted, node.position)
 
         for _ in range(ambush_count):
             self._spawn_zombie(node.position)
         if ambush_count > 0:
             self._play_sfx("zombie_alert")
             self._add_alert_popup(node.position)
+
+    def _grant_rewards(self, rewards: Dict[str, int]) -> Dict[str, int]:
+        granted: Dict[str, int] = {}
+        salvaged_weapon = False
+
+        for item, amount in rewards.items():
+            if amount <= 0:
+                continue
+
+            if item in WEAPON_ITEMS and item != "maos":
+                for _ in range(amount):
+                    if self.inventory.get_quantity(item) > 0:
+                        salvage = {"madeira": 2} if item == "taco" else {"metal": 2, "polvora": 1}
+                        for salvage_item, salvage_amount in salvage.items():
+                            self.inventory.add_item(salvage_item, salvage_amount)
+                            granted[salvage_item] = granted.get(salvage_item, 0) + salvage_amount
+                        salvaged_weapon = True
+                    else:
+                        self.inventory.add_item(item, 1)
+                        granted[item] = granted.get(item, 0) + 1
+                continue
+
+            self.inventory.add_item(item, amount)
+            granted[item] = granted.get(item, 0) + amount
+
+        if salvaged_weapon:
+            self._set_message("Arma repetida desmontada em recursos.")
+        return granted
 
     def _add_item_popups(self, rewards: Dict[str, int], origin: Tuple[float, float] | pygame.Vector2 | None = None) -> None:
         if not rewards:
@@ -2026,18 +2196,20 @@ class Game:
         damage = int(stats["damage"])
         cooldown = float(stats["cooldown"])
         ammo_cost = int(stats.get("ammo", 0))
+        ammo_item = str(stats.get("ammo_item", "balas"))
 
-        if ammo_cost > 0 and self.inventory.get_quantity("balas") < ammo_cost:
+        if ammo_cost > 0 and self.inventory.get_quantity(ammo_item) < ammo_cost:
             self._play_sfx("gun_empty")
-            self._set_message("Sem balas.")
+            self._set_message(f"Sem {ITEM_LABELS.get(ammo_item, ammo_item)}.")
             self._attack_timer = 0.2
             return
 
         player_pos = pygame.Vector2(self.player.player_position)
         self.player.start_attack_animation()
         if ammo_cost > 0:
-            self.inventory.remove_item("balas", ammo_cost)
-            self._play_sfx("shotgun" if self.player.current_weapon == "escopeta" else "pistol")
+            self.inventory.remove_item(ammo_item, ammo_cost)
+            weapon_family = str(stats.get("family", self.player.current_weapon))
+            self._play_sfx("shotgun" if weapon_family == "escopeta" else "pistol")
             self._fire_gun(player_pos, attack_range, damage, stats)
         else:
             self._play_sfx("melee")
@@ -2073,10 +2245,13 @@ class Game:
         player_pos: pygame.Vector2,
         attack_range: float,
         damage: int,
-        stats: Dict[str, float | int],
+        stats: Dict[str, object],
     ) -> None:
-        mouse_world = self.screen_to_world(self._window_to_screen(pygame.mouse.get_pos()))
-        aim = mouse_world - player_pos
+        if self._gamepad_aim_vector.length_squared() > 0.04:
+            aim = self._gamepad_aim_vector.normalize()
+        else:
+            mouse_world = self.screen_to_world(self._window_to_screen(pygame.mouse.get_pos()))
+            aim = mouse_world - player_pos
         if aim.length_squared() <= 0.01:
             aim = self.player.facing_direction.copy()
         else:
@@ -2085,6 +2260,11 @@ class Game:
         pellets = int(stats.get("pellets", 1))
         spread = float(stats.get("spread", 0))
         hit_width = float(stats.get("hit_width", 4))
+        effect = str(stats.get("effect", ""))
+        pierce = int(stats.get("pierce", 1)) if effect == "pierce" else 1
+        projectile_color = stats.get("projectile_color", (255, 224, 120))
+        if not isinstance(projectile_color, tuple):
+            projectile_color = (255, 224, 120)
         pellet_damage = max(1, damage // max(1, pellets))
         shot_origin = player_pos + (aim * 18)
         hit_any = False
@@ -2097,31 +2277,33 @@ class Game:
 
         for angle in angles:
             direction = aim.rotate(angle)
-            hit = self._find_shot_hit(shot_origin, direction, attack_range, hit_width)
-            if hit is None:
+            hits = self._find_shot_hits(shot_origin, direction, attack_range, hit_width, pierce)
+            if not hits:
                 impact_position = shot_origin + (direction * attack_range)
             else:
-                zombie, hit_distance = hit
-                impact_position = shot_origin + (direction * hit_distance)
-                self._damage_zombie(zombie, pellet_damage)
+                for zombie, _ in hits:
+                    self._damage_zombie(zombie, pellet_damage)
+                impact_position = shot_origin + (direction * hits[-1][1])
                 hit_any = True
 
             impact_position.x = max(0, min(WORLD_WIDTH, impact_position.x))
             impact_position.y = max(0, min(WORLD_HEIGHT, impact_position.y))
-            self.shot_impacts.append(ShotImpact(impact_position, shot_origin))
+            if effect == "fire":
+                self._apply_fire_splash(impact_position, stats, {id(zombie) for zombie, _ in hits})
+            self.shot_impacts.append(ShotImpact(impact_position, shot_origin, projectile_color))
 
         if not hit_any:
             self._set_message("Disparo sem alvo.")
 
-    def _find_shot_hit(
+    def _find_shot_hits(
         self,
         origin: pygame.Vector2,
         direction: pygame.Vector2,
         max_range: float,
         hit_width: float,
-    ) -> Tuple[Zombie, float] | None:
-        closest_hit = None
-        closest_distance = max_range + 1
+        max_hits: int,
+    ) -> List[Tuple[Zombie, float]]:
+        hits: List[Tuple[Zombie, float]] = []
 
         for zombie in self.zombies:
             if zombie.is_dying():
@@ -2135,11 +2317,30 @@ class Game:
             if miss_distance > zombie.radius + hit_width:
                 continue
             hit_distance = max(0.0, projection - zombie.radius)
-            if hit_distance < closest_distance:
-                closest_distance = hit_distance
-                closest_hit = (zombie, hit_distance)
+            hits.append((zombie, hit_distance))
 
-        return closest_hit
+        hits.sort(key=lambda item: item[1])
+        return hits[:max(1, max_hits)]
+
+    def _apply_fire_splash(
+        self,
+        center: pygame.Vector2,
+        stats: Dict[str, object],
+        excluded_ids: set[int],
+    ) -> None:
+        radius = float(stats.get("splash_radius", 0))
+        damage = int(stats.get("splash_damage", 0))
+        if radius <= 0 or damage <= 0:
+            return
+
+        for zombie in self.zombies:
+            if id(zombie) in excluded_ids or zombie.is_dying():
+                continue
+            distance = zombie.position.distance_to(center)
+            if distance > radius + zombie.radius:
+                continue
+            falloff = max(0.35, 1.0 - (distance / max(1.0, radius + zombie.radius)))
+            self._damage_zombie(zombie, max(1, int(damage * falloff)))
 
     def _damage_zombie(self, zombie: Zombie, damage: int) -> None:
         zombie.take_damage(damage)
@@ -2772,62 +2973,89 @@ class Game:
     def _draw_quick_access_bar(self) -> None:
         scale = 3
         bar = _load_ui_sprite("Quick-Access-Inventory.png", scale)
-        bar_rect = bar.get_rect(center=(WIDTH // 2, HEIGHT - 54))
+        bar_rect = self._quick_access_bar_rect()
         self.screen.blit(bar, bar_rect)
 
-        slot_size = 19 * scale
-        slot_pitch = 21 * scale
-        slot_origin = pygame.Vector2(bar_rect.x + scale, bar_rect.y)
         for index, item_name in enumerate(self._quick_slots):
-            slot_rect = pygame.Rect(
-                round(slot_origin.x + index * slot_pitch),
-                round(slot_origin.y),
-                slot_size,
-                slot_size,
-            )
-            quantity = self.inventory.get_quantity(item_name)
-            if item_name == "maos":
-                quantity = 1
+            slot_rect = self._quick_slot_rect(index)
+            display_item = self._display_item_for_slot(item_name)
+            quantity = self._slot_quantity(item_name)
             available = quantity > 0
-            self._draw_slot_item(slot_rect, item_name, quantity, available)
+            self._draw_slot_item(slot_rect, display_item, quantity, available)
 
             if index == self._selected_quick_slot:
                 pygame.draw.rect(self.screen, PALETTE["accent"], slot_rect.inflate(5, 5), 2, border_radius=2)
 
+    def _quick_access_bar_rect(self) -> pygame.Rect:
+        return _load_ui_sprite("Quick-Access-Inventory.png", 3).get_rect(center=(WIDTH // 2, HEIGHT - 54))
+
+    def _quick_slot_rect(self, index: int) -> pygame.Rect:
+        scale = 3
+        bar_rect = self._quick_access_bar_rect()
+        slot_size = 19 * scale
+        slot_pitch = 21 * scale
+        return pygame.Rect(
+            round(bar_rect.x + scale + index * slot_pitch),
+            round(bar_rect.y),
+            slot_size,
+            slot_size,
+        )
+
+    def _quick_slot_index_at(self, mouse_pos: Tuple[int, int]) -> int | None:
+        for index in range(len(self._quick_slots)):
+            if self._quick_slot_rect(index).collidepoint(mouse_pos):
+                return index
+        return None
+
     def _draw_ammo_indicator(self) -> None:
-        ammo_count = self.inventory.get_quantity("balas")
         weapon_name = self.player.current_weapon
-        if weapon_name == "escopeta":
+        stats = WEAPONS.get(weapon_name, WEAPONS["maos"])
+        ammo_item = str(stats.get("ammo_item", "balas"))
+        ammo_count = self.inventory.get_quantity(ammo_item)
+        weapon_family = str(stats.get("family", weapon_name))
+        if weapon_family == "escopeta":
             bullet_name = "Shotgun-Bullet.png"
             empty_name = "Shotgun-Bullet_Empty.png"
-            visible_rounds = 4
-        elif weapon_name == "pistola":
+            visible_rounds = int(stats.get("visible_rounds", 4))
+        elif weapon_family == "pistola":
             bullet_name = "Pistol-Bullet.png"
             empty_name = "Pistol-Bullet_Empty.png"
-            visible_rounds = 6
+            visible_rounds = int(stats.get("visible_rounds", 6))
         else:
             bullet_name = "Gun-Bullet.png"
             empty_name = "Gun-Bullet_Empty.png"
-            visible_rounds = 6
+            visible_rounds = int(stats.get("visible_rounds", 6))
 
         bullet = _load_ui_sprite(bullet_name, 2)
         empty_bullet = _load_ui_sprite(empty_name, 2)
-        icon = _load_ui_sprite("Icon_Bullet-box_Red.png", 3)
+        projectile_color = stats.get("projectile_color")
+        if isinstance(projectile_color, tuple) and ammo_item != "balas":
+            bullet = _tint_sprite(bullet, projectile_color)
+        icon = _load_ui_sprite(ITEM_ICONS.get(ammo_item, "Icon_Bullet-box_Red.png"), 3)
+        tint = ITEM_TINTS.get(ammo_item)
+        if tint is not None:
+            icon = _tint_sprite(icon, tint)
         x = WIDTH - 164
         y = HEIGHT - 86
         self.screen.blit(icon, icon.get_rect(midleft=(x, y + 18)))
 
         count_text = self.font.render(str(ammo_count), True, PALETTE["text"])
+        if isinstance(projectile_color, tuple) and ammo_item != "balas":
+            count_text = self.font.render(str(ammo_count), True, projectile_color)
         self.screen.blit(count_text, count_text.get_rect(midleft=(x + 48, y + 18)))
 
         bullet_x = x + 94
         for index in range(visible_rounds):
             sprite = bullet if index < min(ammo_count, visible_rounds) else empty_bullet
-            self.screen.blit(sprite, (bullet_x + index * (sprite.get_width() + 4), y))
+            bullet_pos = (bullet_x + index * (sprite.get_width() + 4), y)
+            self.screen.blit(sprite, bullet_pos)
+            if isinstance(projectile_color, tuple) and ammo_item != "balas":
+                marker_rect = pygame.Rect(bullet_pos[0] + 2, bullet_pos[1] + sprite.get_height() - 4, sprite.get_width() - 4, 3)
+                pygame.draw.rect(self.screen, projectile_color, marker_rect)
 
     def _draw_inventory_panel(self) -> None:
         panel_scale = 4
-        cell_scale = 4
+        cell_scale = 3
         panel = _load_ui_sprite("Inventory_1_Scrollbar.png", panel_scale)
         cell = _load_ui_sprite("Inventory-Cell.png", cell_scale)
         close_button = _load_ui_sprite("Inventory_Close_Not-Pressed.png", panel_scale)
@@ -2838,37 +3066,53 @@ class Game:
         self.screen.blit(title, (panel_rect.x + 24, panel_rect.y + 18))
         self.screen.blit(close_button, self._inventory_close_button_rect())
 
-        columns = 5
-        rows = 3
-        cell_width, cell_height = cell.get_size()
-        grid_width = columns * cell_width
-        grid_height = rows * cell_height
-        gap_x = (panel_rect.width - grid_width) // (columns + 1)
-        gap_y = (panel_rect.height - grid_height - 62) // (rows + 1)
-        start_x = panel_rect.x + gap_x
-        start_y = panel_rect.y + 58 + gap_y
-
-        visible_items = [
-            item_name
-            for item_name in INVENTORY_ITEM_ORDER
-            if self.inventory.get_quantity(item_name) > 0
-        ]
-        slot_count = columns * rows
-
-        for index in range(slot_count):
-            col = index % columns
-            row = index // columns
-            slot_rect = pygame.Rect(
-                start_x + col * (cell_width + gap_x),
-                start_y + row * (cell_height + gap_y),
-                cell_width,
-                cell_height,
-            )
+        visible_items = self._visible_inventory_items()
+        for index, slot_rect in enumerate(self._inventory_item_rects()):
             self.screen.blit(cell, slot_rect)
             if index >= len(visible_items):
                 continue
             item_name = visible_items[index]
             self._draw_slot_item(slot_rect, item_name, self.inventory.get_quantity(item_name), True)
+
+    def _visible_inventory_items(self) -> List[str]:
+        return [item_name for item_name in INVENTORY_ITEM_ORDER if self.inventory.get_quantity(item_name) > 0]
+
+    def _inventory_item_rects(self) -> List[pygame.Rect]:
+        panel_scale = 4
+        cell_scale = 3
+        panel = _load_ui_sprite("Inventory_1_Scrollbar.png", panel_scale)
+        cell = _load_ui_sprite("Inventory-Cell.png", cell_scale)
+        panel_rect = panel.get_rect(center=(WIDTH // 2, HEIGHT // 2))
+        columns = 5
+        rows = 4
+        cell_width, cell_height = cell.get_size()
+        grid_width = columns * cell_width
+        grid_height = rows * cell_height
+        gap_x = max(8, (panel_rect.width - grid_width) // (columns + 1))
+        gap_y = max(6, (panel_rect.height - grid_height - 62) // (rows + 1))
+        start_x = panel_rect.x + gap_x
+        start_y = panel_rect.y + 58 + gap_y
+
+        rects: List[pygame.Rect] = []
+        for index in range(columns * rows):
+            col = index % columns
+            row = index // columns
+            rects.append(
+                pygame.Rect(
+                    start_x + col * (cell_width + gap_x),
+                    start_y + row * (cell_height + gap_y),
+                    cell_width,
+                    cell_height,
+                )
+            )
+        return rects
+
+    def _inventory_item_at(self, mouse_pos: Tuple[int, int]) -> str | None:
+        visible_items = self._visible_inventory_items()
+        for index, rect in enumerate(self._inventory_item_rects()):
+            if index < len(visible_items) and rect.collidepoint(mouse_pos):
+                return visible_items[index]
+        return None
 
     def _draw_slot_item(self, slot_rect: pygame.Rect, item_name: str, quantity: int, available: bool) -> None:
         text_color = PALETTE["text"] if available else (115, 118, 118)
@@ -2876,6 +3120,9 @@ class Game:
         if icon_name is not None:
             icon_scale = 3 if slot_rect.width <= 64 else 4
             icon = _load_ui_sprite(icon_name, icon_scale)
+            tint = ITEM_TINTS.get(item_name)
+            if tint is not None:
+                icon = _tint_sprite(icon, tint)
             icon_rect = icon.get_rect(center=slot_rect.center)
             self.screen.blit(icon, icon_rect)
         else:
@@ -2909,12 +3156,13 @@ class Game:
 
     def _crafting_recipe_rects(self) -> List[Tuple[str, pygame.Rect]]:
         panel_rect = self._crafting_panel_rect()
-        recipe_names = self.crafting.get_recipe_names()
+        recipe_names = self._available_recipe_names()
         rects: List[Tuple[str, pygame.Rect]] = []
         row_width = panel_rect.width - 52
-        row_height = 86
+        available_height = max(120, panel_rect.height - 92)
+        gap = 8
+        row_height = min(86, max(48, (available_height - max(0, len(recipe_names) - 1) * gap) // max(1, len(recipe_names))))
         start_y = panel_rect.y + 62
-        gap = 18
         for index, recipe_name in enumerate(recipe_names):
             rect = pygame.Rect(
                 panel_rect.x + 26,
@@ -2935,9 +3183,11 @@ class Game:
         title = self.font.render("CRAFTING", True, PALETTE["text"])
         self.screen.blit(title, (panel_rect.x + 24, panel_rect.y + 18))
 
-        cell = _load_ui_sprite("Crafting-cell.png", 3)
-        plus = _load_ui_sprite("Crafting_Plus.png", 3)
-        equal = _load_ui_sprite("Crafting_Equal.png", 3)
+        recipe_names = self._available_recipe_names()
+        cell_scale = 2 if len(recipe_names) > 4 else 3
+        cell = _load_ui_sprite("Crafting-cell.png", cell_scale)
+        plus = _load_ui_sprite("Crafting_Plus.png", cell_scale)
+        equal = _load_ui_sprite("Crafting_Equal.png", cell_scale)
 
         for recipe_name, row_rect in self._crafting_recipe_rects():
             recipe = self.crafting.get_recipe(recipe_name)
@@ -2985,7 +3235,10 @@ class Game:
     ) -> None:
         icon_name = ITEM_ICONS.get(item_name)
         if icon_name is not None:
-            icon = _load_ui_sprite(icon_name, 3)
+            icon = _load_ui_sprite(icon_name, 2 if cell_rect.width <= 48 else 3)
+            tint = ITEM_TINTS.get(item_name)
+            if tint is not None:
+                icon = _tint_sprite(icon, tint)
             if not available:
                 icon = _dim_sprite(icon)
             surface.blit(icon, icon.get_rect(center=(cell_rect.centerx, cell_rect.centery - 5)))
@@ -3027,15 +3280,24 @@ class Game:
                 icon = empty_icon
             self.screen.blit(icon, (x + index * spacing, y))
 
+    def _available_recipe_names(self) -> List[str]:
+        names = self.crafting.get_recipe_names(self.inventory)
+        if names and self._selected_recipe_index >= len(names):
+            self._selected_recipe_index = 0
+        self._recipe_names = names
+        return names
+
     def _get_selected_recipe(self) -> str:
-        if not self._recipe_names:
+        recipe_names = self._available_recipe_names()
+        if not recipe_names:
             return "taco"
-        return self._recipe_names[self._selected_recipe_index]
+        return recipe_names[self._selected_recipe_index]
 
     def _cycle_recipe(self) -> None:
-        if not self._recipe_names:
+        recipe_names = self._available_recipe_names()
+        if not recipe_names:
             return
-        self._selected_recipe_index = (self._selected_recipe_index + 1) % len(self._recipe_names)
+        self._selected_recipe_index = (self._selected_recipe_index + 1) % len(recipe_names)
         self._play_sfx("inventory_move")
 
     def _cycle_quick_slot(self, direction: int) -> None:
@@ -3046,12 +3308,65 @@ class Game:
     def _select_quick_slot(self, index: int) -> None:
         if not 0 <= index < len(self._quick_slots):
             return
+        cycle_variant = self._selected_quick_slot == index
         self._selected_quick_slot = index
         item_name = self._quick_slots[index]
-        if item_name in WEAPON_ITEMS:
-            self._equip_weapon(item_name)
+        if item_name in WEAPON_ITEMS or item_name in WEAPON_FAMILIES:
+            self._equip_weapon_slot(item_name, cycle_variant)
             return
         self._play_sfx("inventory_move")
+
+    def _assign_quick_slot_item(self, item_name: str) -> None:
+        if item_name not in WEAPON_ITEMS and item_name not in CONSUMABLE_ITEMS:
+            self._play_sfx("ui_denied")
+            self._set_message("Esse item fica no inventario.")
+            return
+        if self.inventory.get_quantity(item_name) <= 0:
+            self._play_sfx("ui_denied")
+            return
+
+        self._quick_slots[self._selected_quick_slot] = item_name
+        self._play_sfx("inventory_move")
+        self._set_message(f"{ITEM_LABELS.get(item_name, item_name)} no atalho {self._selected_quick_slot + 1}.")
+        if item_name in WEAPON_ITEMS:
+            self._equip_weapon(item_name)
+
+    def _weapon_variants_for_slot(self, slot_name: str) -> List[str]:
+        return WEAPON_FAMILIES.get(slot_name, [slot_name])
+
+    def _owned_weapon_variants(self, slot_name: str) -> List[str]:
+        return [
+            weapon_name
+            for weapon_name in self._weapon_variants_for_slot(slot_name)
+            if weapon_name == "maos" or self.inventory.get_quantity(weapon_name) > 0
+        ]
+
+    def _slot_quantity(self, item_name: str) -> int:
+        if item_name == "maos":
+            return 1
+        if item_name in WEAPON_FAMILIES:
+            return len(self._owned_weapon_variants(item_name))
+        return self.inventory.get_quantity(item_name)
+
+    def _display_item_for_slot(self, item_name: str) -> str:
+        variants = self._owned_weapon_variants(item_name) if item_name in WEAPON_FAMILIES else []
+        if self.player.current_weapon in variants:
+            return self.player.current_weapon
+        if variants:
+            return variants[0]
+        return item_name
+
+    def _equip_weapon_slot(self, slot_name: str, cycle_variant: bool = False) -> None:
+        variants = self._owned_weapon_variants(slot_name)
+        if not variants:
+            self._play_sfx("ui_denied")
+            return
+
+        weapon_name = variants[0]
+        if self.player.current_weapon in variants:
+            current_index = variants.index(self.player.current_weapon)
+            weapon_name = variants[(current_index + 1) % len(variants)] if cycle_variant else self.player.current_weapon
+        self._equip_weapon(weapon_name)
 
     def _equip_weapon(self, weapon_name: str) -> None:
         if weapon_name not in WEAPONS:

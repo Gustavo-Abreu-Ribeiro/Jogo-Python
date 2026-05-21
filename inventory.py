@@ -15,10 +15,17 @@ class Inventory:
             "kit_medico": 0,
             "polvora": 0,
             "balas": 0,
+            "balas_incendiarias": 0,
+            "balas_perfurantes": 0,
+            "cartuchos": 0,
+            "cartuchos_incendiarios": 0,
             "maos": 1,
             "taco": 0,
             "pistola": 0,
+            "pistola_incendiaria": 0,
+            "pistola_perfurante": 0,
             "escopeta": 0,
+            "escopeta_incendiaria": 0,
         }
         self.inventory: Dict[str, int] = defaults
         if initial:
