@@ -167,11 +167,28 @@ class Zombie:
         return "down" if direction.y > 0 else "up"
 
     @staticmethod
-    def _flash_sprite(sprite: pygame.Surface) -> pygame.Surface:
+    def _sprite_color_overlay(
+        sprite: pygame.Surface,
+        color: tuple[int, int, int],
+        alpha: int,
+    ) -> pygame.Surface:
+        overlay = sprite.copy()
+        overlay.fill((0, 0, 0, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        overlay.fill((*color, 0), special_flags=pygame.BLEND_RGB_ADD)
+        overlay.set_alpha(max(0, min(255, alpha)))
+        return overlay
+
+    @classmethod
+    def _flash_sprite(cls, sprite: pygame.Surface, intensity: float = 1.0) -> pygame.Surface:
         flashed = sprite.copy()
-        overlay = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
-        overlay.fill((95, 95, 95, 0))
-        flashed.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+        flash_strength = max(0.0, min(1.0, intensity))
+        flashed.fill((255, 218, 218, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        red_overlay = cls._sprite_color_overlay(
+            sprite,
+            (255, 64, 64),
+            int(190 * flash_strength),
+        )
+        flashed.blit(red_overlay, (0, 0))
         return flashed
 
     def _available_animation(self, animation: str, direction: str) -> tuple[str, str]:
@@ -558,7 +575,7 @@ class Zombie:
         elif self.burn_timer > 0:
             sprite = self._tint_status_sprite(sprite, (255, 88, 38), 54)
         if self.hit_flash_timer > 0:
-            sprite = self._flash_sprite(sprite)
+            sprite = self._flash_sprite(sprite, self.hit_flash_timer / 0.18)
 
         sprite_rect = sprite.get_rect(
             midbottom=(round(draw_pos.x), round(draw_pos.y + self.radius + 6))
@@ -576,8 +593,8 @@ class Zombie:
     @staticmethod
     def _tint_status_sprite(sprite: pygame.Surface, color: tuple[int, int, int], alpha: int) -> pygame.Surface:
         tinted = sprite.copy()
-        overlay = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
-        overlay.fill((*color, alpha))
+        tinted.fill((228, 228, 228, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        overlay = Zombie._sprite_color_overlay(sprite, color, alpha)
         tinted.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
         return tinted
 

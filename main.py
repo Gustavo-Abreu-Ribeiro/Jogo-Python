@@ -53,6 +53,7 @@ SETTINGS_PATH = PROJECT_ROOT / "settings.json"
 MUSIC_ROOT = PROJECT_ROOT / "musics"
 TITLE_MUSIC_PATH = MUSIC_ROOT / "Menu_Music.mp3"
 GAME_MUSIC_PATH = MUSIC_ROOT / "Loop_Music.mp3"
+BOSS_MUSIC_PATH = MUSIC_ROOT / "Boss_Fight.mp3"
 GAME_MUSIC_GAIN = 3.0
 GAME_MUSIC_LAYER_COUNT = 2
 SFX_ROOT = MUSIC_ROOT / "Sound Effects"
@@ -249,7 +250,7 @@ _SCALED_SPRITE_CACHE: Dict[Tuple[str, float], pygame.Surface] = {}
 _COMPOSITE_SPRITE_CACHE: Dict[Tuple[str, str, str, str, float], pygame.Surface] = {}
 _UI_SPRITE_CACHE: Dict[Tuple[str, int], pygame.Surface] = {}
 _SHOT_IMPACT_CACHE: List[List[pygame.Surface]] | None = None
-_AXE_PROJECTILE_CACHE: Dict[str, List[pygame.Surface]] = {}
+_AXE_PROJECTILE_CACHE: Dict[tuple[str, float], List[pygame.Surface]] = {}
 _SHADOW_CACHE: Dict[Tuple[Tuple[int, int], int], pygame.Surface] = {}
 
 INVENTORY_ITEM_ORDER = [
@@ -607,8 +608,9 @@ def _load_shot_impact_frames() -> List[pygame.Surface]:
     return random.choice(_SHOT_IMPACT_CACHE)
 
 
-def _load_axe_projectile_frames(direction_name: str) -> List[pygame.Surface]:
-    cache_key = direction_name
+def _load_axe_projectile_frames(direction_name: str, scale: float = 1.0) -> List[pygame.Surface]:
+    visual_scale = max(0.5, float(scale))
+    cache_key = (direction_name, round(visual_scale, 2))
     cached = _AXE_PROJECTILE_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -630,7 +632,9 @@ def _load_axe_projectile_frames(direction_name: str) -> List[pygame.Surface]:
         frame.blit(sheet, (0, 0), pygame.Rect(frame_index * frame_width, 0, frame_width, frame_height))
         if direction_name == "up":
             frame = pygame.transform.flip(frame, False, True)
-        frames.append(pygame.transform.scale(frame, (frame_width * 3, frame_height * 3)))
+        scaled_width = max(1, int(frame_width * 3 * visual_scale))
+        scaled_height = max(1, int(frame_height * 3 * visual_scale))
+        frames.append(pygame.transform.scale(frame, (scaled_width, scaled_height)))
 
     _AXE_PROJECTILE_CACHE[cache_key] = frames
     return frames
@@ -804,6 +808,7 @@ class AxeProjectile:
         damage: int,
         max_distance: float = 420.0,
         speed: float = 330.0,
+        sprite_scale: float = 1.0,
     ) -> None:
         self.position = pygame.Vector2(position)
         self.origin = self.position.copy()
@@ -814,11 +819,12 @@ class AxeProjectile:
         self.damage = damage
         self.max_distance = max_distance
         self.speed = speed
-        self.radius = 15
+        self.sprite_scale = max(0.5, float(sprite_scale))
+        self.radius = max(15, int(15 * self.sprite_scale))
         self.animation_time = 0.0
         self.has_hit = False
         self.direction_name = self._direction_name(self.direction)
-        self.frames = _load_axe_projectile_frames(self.direction_name)
+        self.frames = _load_axe_projectile_frames(self.direction_name, self.sprite_scale)
 
     @staticmethod
     def _direction_name(direction: pygame.Vector2) -> str:
@@ -964,6 +970,7 @@ class Game:
         self.decorations: List[Decoration] = []
         self.doors: List[MapTrigger] = []
         self.exits: List[MapTrigger] = []
+        self._occupied_exit_triggers: set[int] = set()
         self.tile_map: TiledMap | None = None
         self.collision_rects: List[pygame.Rect] = []
         self._collision_buckets: Dict[Tuple[int, int], List[pygame.Rect]] = {}
@@ -1222,6 +1229,15 @@ class Game:
     def _play_game_music(self) -> None:
         self._play_music(GAME_MUSIC_PATH)
 
+    def _play_boss_music(self) -> None:
+        self._play_music(BOSS_MUSIC_PATH)
+
+    def _play_active_music(self) -> None:
+        if self._boss_is_alive():
+            self._play_boss_music()
+            return
+        self._play_game_music()
+
     def _reset_game(self) -> None:
         self.game_time = 0.0
         self.difficulty_scale = 1.0
@@ -1253,6 +1269,7 @@ class Game:
         self._return_map_path = None
         self._return_map_index = 0
         self._return_position = None
+        self._occupied_exit_triggers.clear()
         self._show_inventory = False
         self._show_crafting = False
         self._selected_quick_slot = 0
@@ -1261,6 +1278,7 @@ class Game:
 
         self._generate_world()
         self.player.set_position(tuple(self._base_position))
+        self._sync_exit_trigger_state()
         self.inventory.add_item("comida", 2)
 
     def _clear_world_content(self) -> None:
@@ -1272,6 +1290,7 @@ class Game:
         self.decorations.clear()
         self.doors.clear()
         self.exits.clear()
+        self._occupied_exit_triggers.clear()
         self._set_collision_rects([])
         self.tile_map = None
         self._interior_exit = None
@@ -1420,7 +1439,9 @@ class Game:
         )
         spawn = self._find_open_position_near(target)
         self.player.set_position(tuple(spawn))
+        self._sync_exit_trigger_state()
         self._transition_cooldown = 0.8
+        self._play_active_music()
         return True
 
     def _enter_random_interior(self, door: MapTrigger) -> None:
@@ -1506,7 +1527,9 @@ class Game:
         spawn_y = max(spawn_margin, min(WORLD_HEIGHT - spawn_margin, player_y_ratio * WORLD_HEIGHT))
         spawn = self._find_open_position_near((spawn_x, spawn_y))
         self.player.set_position(tuple(spawn))
+        self._sync_exit_trigger_state()
         self._transition_cooldown = 0.9
+        self._play_active_music()
         self._play_sfx("objective")
         if self._is_boss_map_path(next_path):
             self._set_message("Arena do chefe. Teleportes bloqueados.")
@@ -1919,6 +1942,8 @@ class Game:
         self.player.player_hunger = float(data.get("player_hunger", 100.0))
         position = data.get("player_position", tuple(self._base_position))
         self.player.set_position(position)
+        self._sync_exit_trigger_state()
+        self._play_active_music()
         self.inventory = Inventory(data.get("inventory", None))
         self.game_time = float(data.get("game_time", 0.0))
         loaded_weapon = data.get("current_weapon")
@@ -2002,6 +2027,7 @@ class Game:
                         self._set_message("Sem save encontrado.")
                     else:
                         self._apply_loaded_state(data)
+                        self._play_active_music()
                         self._play_sfx("objective")
                         self._set_message("Save carregado.")
             elif event.type == pygame.MOUSEWHEEL:
@@ -2165,7 +2191,7 @@ class Game:
             if self._screen_state == "main_menu":
                 if self._has_started_game and not self._game_over:
                     self._screen_state = "playing"
-                    self._play_game_music()
+                    self._play_active_music()
                 else:
                     self.is_game_running = False
             else:
@@ -2182,12 +2208,12 @@ class Game:
             self._reset_game()
             self._has_started_game = True
             self._screen_state = "playing"
-            self._play_game_music()
+            self._play_active_music()
             self._set_message("Novo jogo iniciado.")
         elif action == "continue_game":
             if self._has_started_game and not self._game_over:
                 self._screen_state = "playing"
-                self._play_game_music()
+                self._play_active_music()
             else:
                 self._load_saved_game()
         elif action == "saves":
@@ -2210,7 +2236,7 @@ class Game:
         self._apply_loaded_state(data)
         self._has_started_game = True
         self._screen_state = "playing"
-        self._play_game_music()
+        self._play_active_music()
         self._play_sfx("objective")
         self._set_message("Save carregado.")
         return True
@@ -2351,6 +2377,7 @@ class Game:
                 origin,
                 direction,
                 damage=max(12, int(zombie.attack_damage * 0.9)),
+                sprite_scale=zombie.sprite_scale,
             )
         )
 
@@ -2460,13 +2487,36 @@ class Game:
 
         return closest
 
+    def _triggers_in_range(self, triggers: List[MapTrigger], max_distance: float) -> List[MapTrigger]:
+        player_pos = pygame.Vector2(self.player.player_position)
+        active_triggers: list[tuple[float, MapTrigger]] = []
+
+        for trigger in triggers:
+            distance = trigger.position.distance_to(player_pos)
+            effective_distance = max(float(trigger.radius), max_distance)
+            if distance <= effective_distance:
+                active_triggers.append((distance, trigger))
+
+        active_triggers.sort(key=lambda item: item[0])
+        return [trigger for _, trigger in active_triggers]
+
+    def _sync_exit_trigger_state(self) -> None:
+        self._occupied_exit_triggers = {
+            id(trigger) for trigger in self._triggers_in_range(self.exits, EXIT_RANGE)
+        }
+
     def _handle_map_transitions(self, interact_pressed: bool) -> bool:
         if self._transition_cooldown > 0:
             return False
 
-        exit_trigger = self._find_nearest_trigger(self.exits, EXIT_RANGE)
-        if exit_trigger is not None:
-            self._use_map_exit(exit_trigger)
+        exit_triggers = self._triggers_in_range(self.exits, EXIT_RANGE)
+        new_exit_trigger = next(
+            (trigger for trigger in exit_triggers if id(trigger) not in self._occupied_exit_triggers),
+            None,
+        )
+        self._occupied_exit_triggers = {id(trigger) for trigger in exit_triggers}
+        if new_exit_trigger is not None:
+            self._use_map_exit(new_exit_trigger)
             return True
 
         if not interact_pressed:
@@ -2769,6 +2819,7 @@ class Game:
                 self._bosses_defeated += 1
                 self._progress_level += 1
                 self._grant_boss_rewards()
+                self._play_active_music()
                 self._set_message("Chefe derrotado. Teleportes liberados.")
             else:
                 self._set_message("Zumbi abatido. Vasculhe o corpo com E.")
