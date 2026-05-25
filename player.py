@@ -78,6 +78,7 @@ ANIMATION_FPS = {
 class Player:
     SPRITE_SCALE: ClassVar[int] = 3
     _sprite_cache: ClassVar[dict[str, dict[str, dict[str, list[pygame.Surface]]]]] = {}
+    _shadow_cache: ClassVar[dict[tuple[int, int], pygame.Surface]] = {}
 
     def __init__(self, position: Tuple[float, float]) -> None:
         self.max_health: int = 100
@@ -483,20 +484,27 @@ class Player:
             sprite = self._flash_sprite(sprite, (155, 55, 50))
         return sprite
 
+    @classmethod
+    def _shadow_surface(cls, size: tuple[int, int]) -> pygame.Surface:
+        cached = cls._shadow_cache.get(size)
+        if cached is not None:
+            return cached
+        shadow = pygame.Surface(size, pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow, (18, 22, 24, 115), shadow.get_rect())
+        cls._shadow_cache[size] = shadow
+        return shadow
+
     def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2 | None = None) -> None:
         offset = camera_offset or pygame.Vector2()
         draw_pos = self._pos - offset
         sprite = self._current_sprite()
 
         sprite_rect = sprite.get_rect(midbottom=(round(draw_pos.x), round(draw_pos.y + self.radius + 4)))
-        shadow_surface = pygame.Surface(
-            (
-                max(12, int(sprite_rect.width * 0.56)),
-                max(6, int(sprite_rect.height * 0.18)),
-            ),
-            pygame.SRCALPHA,
+        shadow_size = (
+            max(12, int(sprite_rect.width * 0.56)),
+            max(6, int(sprite_rect.height * 0.18)),
         )
-        pygame.draw.ellipse(shadow_surface, (18, 22, 24, 115), shadow_surface.get_rect())
+        shadow_surface = self._shadow_surface(shadow_size)
         shadow_rect = shadow_surface.get_rect(center=(sprite_rect.centerx + 2, sprite_rect.bottom - 3))
         surface.blit(shadow_surface, shadow_rect)
         surface.blit(sprite, sprite_rect)

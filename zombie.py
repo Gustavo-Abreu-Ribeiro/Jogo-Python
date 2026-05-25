@@ -49,6 +49,9 @@ SMALL_RETREAT_TARGET_DISTANCE = 116.0
 SMALL_RETREAT_SPEED_MULTIPLIER = 1.35
 SMALL_RETREAT_MIN_TIME = 0.42
 SMALL_RETREAT_FORCED_LUNGE_TIME = 0.65
+AXE_THROW_MIN_DISTANCE = 118.0
+AXE_THROW_MAX_DISTANCE = 360.0
+AXE_THROW_FRAME_RATIO = 0.48
 
 
 @dataclass
@@ -58,8 +61,17 @@ class Zombie:
     health: int = 30
     radius: int = 12
     zombie_type: str = "axe"
+    sprite_scale: float = 1.0
+    attack_damage: int = 10
+    attack_range: float = 34.0
+    can_throw_axe: bool = False
     hit_flash_timer: float = 0.0
     animation_time: float = 0.0
+    max_health: int = field(default=30, init=False)
+    burn_timer: float = field(default=0.0, init=False)
+    burn_damage_per_second: float = field(default=0.0, init=False)
+    burn_tick_timer: float = field(default=0.0, init=False)
+    freeze_timer: float = field(default=0.0, init=False)
     facing_direction: str = field(default="down", init=False, repr=False)
     loot_given: bool = field(default=False, init=False)
     corpse_timer: float = field(default=18.0, init=False)
@@ -71,15 +83,22 @@ class Zombie:
     _death_finished: bool = field(default=False, init=False, repr=False)
     _attack_has_hit: bool = field(default=False, init=False, repr=False)
     _attack_started: bool = field(default=False, init=False, repr=False)
+    _ranged_attack_fired: bool = field(default=False, init=False, repr=False)
     _attack_start_position: pygame.Vector2 = field(default_factory=pygame.Vector2, init=False, repr=False)
     _attack_target_position: pygame.Vector2 = field(default_factory=pygame.Vector2, init=False, repr=False)
     _retreat_timer: float = field(default=0.0, init=False, repr=False)
 
     ATTACK_RANGE: ClassVar[float] = 34.0
     _sprite_cache: ClassVar[dict[str, dict[str, dict[str, list[pygame.Surface]]]]] = {}
+    _shadow_cache: ClassVar[dict[tuple[int, int], pygame.Surface]] = {}
+    _scaled_sprite_cache: ClassVar[dict[tuple[int, float], pygame.Surface]] = {}
 
     def __post_init__(self) -> None:
         self.position = pygame.Vector2(self.position)
+        self.max_health = max(1, int(self.health))
+        self.attack_damage = max(1, int(self.attack_damage))
+        self.attack_range = max(1.0, float(self.attack_range))
+        self.sprite_scale = max(0.25, float(self.sprite_scale))
         if self.zombie_type not in ZOMBIE_TYPES:
             self.zombie_type = "axe"
         self._load_sprites(self.zombie_type)
@@ -186,6 +205,34 @@ class Zombie:
             frame_index %= len(frames)
         return frames[frame_index]
 
+    @classmethod
+    def _shadow_surface(cls, size: tuple[int, int]) -> pygame.Surface:
+        cached = cls._shadow_cache.get(size)
+        if cached is not None:
+            return cached
+        shadow = pygame.Surface(size, pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow, (18, 22, 24, 120), shadow.get_rect())
+        cls._shadow_cache[size] = shadow
+        return shadow
+
+    @classmethod
+    def _scaled_surface(cls, sprite: pygame.Surface, scale: float) -> pygame.Surface:
+        if abs(scale - 1.0) < 0.01:
+            return sprite
+        cache_key = (id(sprite), round(scale, 2))
+        cached = cls._scaled_sprite_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        scaled = pygame.transform.scale(
+            sprite,
+            (
+                max(1, int(sprite.get_width() * scale)),
+                max(1, int(sprite.get_height() * scale)),
+            ),
+        )
+        cls._scaled_sprite_cache[cache_key] = scaled
+        return scaled
+
     def _has_animation(self, animation: str) -> bool:
         return animation in self._sprite_cache[self.zombie_type]
 
@@ -194,8 +241,17 @@ class Zombie:
             return "attack_2"
         if self.zombie_type == "small":
             return "walk"
+        if (
+            self.zombie_type == "axe"
+            and self.can_throw_axe
+            and self._has_animation("attack_2")
+            and AXE_THROW_MIN_DISTANCE <= distance <= AXE_THROW_MAX_DISTANCE
+        ):
+            return "attack_2"
+        if self.zombie_type == "axe" and distance > self.attack_range + 18:
+            return "walk"
         variants = [name for name in ("attack_1", "attack_2") if self._has_animation(name)]
-        if self.zombie_type != "small" and variants:
+        if self.zombie_type not in {"small", "axe"} and variants:
             return random.choice(variants)
         if self._has_animation("attack_1"):
             return "attack_1"
@@ -229,6 +285,7 @@ class Zombie:
 
         self._attack_variant = self._choose_attack_variant(distance, force_lunge)
         self._attack_started = True
+        self._ranged_attack_fired = False
         self._attack_start_position = self.position.copy()
         self._attack_target_position = self.position.copy()
 
@@ -275,6 +332,24 @@ class Zombie:
         started = self._attack_started
         self._attack_started = False
         return started
+
+    def consume_axe_throw_ready(self) -> bool:
+        if (
+            self.zombie_type != "axe"
+            or not self.can_throw_axe
+            or self._state != "attack"
+            or self._attack_variant != "attack_2"
+            or self._ranged_attack_fired
+        ):
+            return False
+
+        frames = self._current_frames()
+        throw_frame = max(1, int(len(frames) * AXE_THROW_FRAME_RATIO))
+        if int(self.animation_time) < throw_frame:
+            return False
+
+        self._ranged_attack_fired = True
+        return True
 
     def attack_sfx_name(self) -> str:
         if self.zombie_type == "small" and self._attack_variant == "attack_2":
@@ -400,6 +475,10 @@ class Zombie:
         dt: float,
         world_rect: pygame.Rect | None = None,
     ) -> None:
+        self._update_status_effects(dt)
+        if self.health <= 0 and self._state != "dead":
+            self._set_state("dead")
+
         if self._state == "dead":
             frames = self._current_frames()
             self.animation_time = min(len(frames) - 1, self.animation_time + dt * ANIMATION_FPS.get(self._death_variant, 9.0))
@@ -415,6 +494,12 @@ class Zombie:
         distance = offset.length()
         self._is_moving = False
 
+        if self.freeze_timer > 0:
+            self._set_state("idle")
+            if self.hit_flash_timer > 0:
+                self.hit_flash_timer = max(0.0, self.hit_flash_timer - dt)
+            return
+
         if self.zombie_type == "small":
             self._update_small_behavior(target, distance, dt, world_rect)
         elif distance > 0:
@@ -423,7 +508,11 @@ class Zombie:
 
             if self._state == "attack":
                 pass
-            elif self._can_start_lunge(distance) or distance <= self.ATTACK_RANGE + 14:
+            elif (
+                (self.zombie_type == "axe" and self.can_throw_axe and AXE_THROW_MIN_DISTANCE <= distance <= AXE_THROW_MAX_DISTANCE)
+                or self._can_start_lunge(distance)
+                or distance <= self.attack_range + 14
+            ):
                 self._start_attack(target, distance, world_rect)
             else:
                 self._set_state("walk")
@@ -447,31 +536,50 @@ class Zombie:
         if self.hit_flash_timer > 0:
             self.hit_flash_timer = max(0.0, self.hit_flash_timer - dt)
 
+    def _update_status_effects(self, dt: float) -> None:
+        if self.burn_timer > 0 and not self.is_dying():
+            self.burn_timer = max(0.0, self.burn_timer - dt)
+            self.burn_tick_timer += dt
+            while self.burn_tick_timer >= 0.5 and not self.is_dying():
+                self.burn_tick_timer -= 0.5
+                self.take_damage(max(1, int(self.burn_damage_per_second * 0.5)), flash=False)
+        else:
+            self.burn_tick_timer = 0.0
+
+        if self.freeze_timer > 0:
+            self.freeze_timer = max(0.0, self.freeze_timer - dt)
+
     def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2 | None = None) -> None:
         offset = camera_offset or pygame.Vector2()
         draw_pos = self.position - offset
-        sprite = self._current_sprite()
+        sprite = self._scaled_surface(self._current_sprite(), self.sprite_scale)
+        if self.freeze_timer > 0:
+            sprite = self._tint_status_sprite(sprite, (92, 170, 255), 72)
+        elif self.burn_timer > 0:
+            sprite = self._tint_status_sprite(sprite, (255, 88, 38), 54)
         if self.hit_flash_timer > 0:
             sprite = self._flash_sprite(sprite)
 
         sprite_rect = sprite.get_rect(
             midbottom=(round(draw_pos.x), round(draw_pos.y + self.radius + 6))
         )
-        shadow_surface = pygame.Surface(
+        shadow_surface = self._shadow_surface(
             (
                 max(12, int(sprite_rect.width * 0.52)),
                 max(6, int(sprite_rect.height * 0.18)),
-            ),
-            pygame.SRCALPHA,
+            )
         )
-        pygame.draw.ellipse(shadow_surface, (18, 22, 24, 120), shadow_surface.get_rect())
         shadow_rect = shadow_surface.get_rect(center=(sprite_rect.centerx + 2, sprite_rect.bottom - 3))
         surface.blit(shadow_surface, shadow_rect)
         surface.blit(sprite, sprite_rect)
 
-        if self.hit_flash_timer > 0:
-            flash_radius = max(self.radius + 5, sprite_rect.width // 2)
-            pygame.draw.circle(surface, (255, 120, 120), sprite_rect.center, flash_radius, 2)
+    @staticmethod
+    def _tint_status_sprite(sprite: pygame.Surface, color: tuple[int, int, int], alpha: int) -> pygame.Surface:
+        tinted = sprite.copy()
+        overlay = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
+        overlay.fill((*color, alpha))
+        tinted.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+        return tinted
 
     def collides_with_player(self, player_position: Tuple[float, float], player_radius: int) -> bool:
         if self.is_dying():
@@ -491,20 +599,45 @@ class Zombie:
             return False
 
         player_offset = pygame.Vector2(player_position) - self.position
-        hit_range = (self.ATTACK_RANGE + 8) if self._attack_variant == "attack_2" else self.ATTACK_RANGE
+        hit_range = (self.attack_range + 8) if self._attack_variant == "attack_2" else self.attack_range
         if player_offset.length() > hit_range + player_radius:
+            return False
+        if player_offset.length_squared() > 0:
+            direction_to_player = player_offset.normalize()
+            facing = {
+                "up": pygame.Vector2(0, -1),
+                "down": pygame.Vector2(0, 1),
+                "left": pygame.Vector2(-1, 0),
+                "right": pygame.Vector2(1, 0),
+            }.get(self.facing_direction, pygame.Vector2(0, 1))
+            if facing.dot(direction_to_player) < 0.18:
+                return False
+        if self.zombie_type == "axe" and self.can_throw_axe and self._attack_variant == "attack_2":
             return False
 
         self._attack_has_hit = True
         return True
 
-    def take_damage(self, amount: int) -> None:
+    def take_damage(self, amount: int, flash: bool = True) -> None:
         if self.is_dying():
             return
         self.health = max(0, self.health - amount)
-        self.hit_flash_timer = 0.18
+        if flash:
+            self.hit_flash_timer = 0.18
         if self.health <= 0:
             self._set_state("dead")
+
+    def apply_burn(self, duration: float, damage_per_second: float) -> None:
+        if self.is_dying():
+            return
+        self.burn_timer = max(self.burn_timer, duration)
+        self.burn_damage_per_second = max(self.burn_damage_per_second, damage_per_second)
+
+    def apply_freeze(self, duration: float) -> None:
+        if self.is_dying():
+            return
+        self.freeze_timer = max(self.freeze_timer, duration)
+        self._attack_has_hit = False
 
     def is_dead(self) -> bool:
         return self._death_finished and self.corpse_timer <= 0

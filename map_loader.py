@@ -9,6 +9,7 @@ from typing import Iterable
 import pygame
 
 
+PROJECT_ROOT = Path(__file__).resolve().parent
 TILED_FLIP_H = 0x80000000
 TILED_FLIP_V = 0x40000000
 TILED_FLIP_D = 0x20000000
@@ -17,6 +18,7 @@ TILED_GID_MASK = ~(TILED_FLIP_H | TILED_FLIP_V | TILED_FLIP_D | TILED_ROT_HEX)
 
 
 SOLID_LAYER_KEYWORDS = ("collider", "collision", "solid", "objects", "building", "buildign", "wall", "car")
+DRAW_BUCKET_SIZE = 256
 SEARCH_NODE_LAYERS = {
     "loot": "despensa",
     "cars": "carro",
@@ -93,6 +95,9 @@ class TiledMap:
         self.tilesets = self._load_tilesets(data.get("tilesets", []))
         self._tile_cache: dict[tuple[int, bool, bool], pygame.Surface] = {}
         self.layers: list[TileLayer] = []
+        self._layer_tile_buckets: list[dict[tuple[int, int], tuple[tuple[int, int, pygame.Surface], ...]]] = []
+        self._max_tile_width = self.render_tile_width
+        self._max_tile_height = self.render_tile_height
         self.collision_rects: list[pygame.Rect] = []
         self.search_nodes: list[SearchNodeSpawn] = []
         self.door_triggers: list[MapTriggerSpawn] = []
@@ -100,6 +105,7 @@ class TiledMap:
         self.unrendered_tiles_by_layer: dict[str, int] = {}
 
         self._load_layers(data.get("layers", []))
+        self._build_draw_buckets()
 
     def _load_tilesets(self, tileset_refs: Iterable[dict]) -> list[TileSet]:
         tilesets: list[TileSet] = []
@@ -108,7 +114,7 @@ class TiledMap:
             if source is None:
                 continue
 
-            tsx_path = (self.path.parent / str(source)).resolve()
+            tsx_path = self._resolve_tileset_path(str(source))
             root = ET.parse(tsx_path).getroot()
             image_element = root.find("image")
             image_path = None
@@ -119,7 +125,7 @@ class TiledMap:
             tilecount = int(root.attrib.get("tilecount", 0))
 
             if image_element is not None:
-                image_path = (tsx_path.parent / image_element.attrib["source"]).resolve()
+                image_path = self._resolve_image_path(tsx_path, image_element.attrib["source"])
 
             tile_offset = root.find("tileoffset")
             tile_offset_x = int(tile_offset.attrib.get("x", 0)) if tile_offset is not None else 0
@@ -130,7 +136,7 @@ class TiledMap:
                 if tile_image is None:
                     continue
                 tile_id = int(tile_element.attrib["id"])
-                tile_image_paths[tile_id] = (tsx_path.parent / tile_image.attrib["source"]).resolve()
+                tile_image_paths[tile_id] = self._resolve_image_path(tsx_path, tile_image.attrib["source"])
 
             tilesets.append(
                 TileSet(
@@ -148,6 +154,32 @@ class TiledMap:
             )
 
         return sorted(tilesets, key=lambda tileset: tileset.firstgid)
+
+    def _resolve_tileset_path(self, source: str) -> Path:
+        tsx_path = (self.path.parent / source).resolve()
+        if tsx_path.exists():
+            return tsx_path
+
+        fallback = PROJECT_ROOT / "sprites" / "Sprites" / Path(source).name
+        if fallback.exists():
+            return fallback.resolve()
+        return tsx_path
+
+    @staticmethod
+    def _resolve_image_path(tsx_path: Path, source: str) -> Path:
+        image_path = (tsx_path.parent / source).resolve()
+        if image_path.exists():
+            return image_path
+
+        marker = "PostApocalypse_AssetPack_v1.1.2/"
+        normalized_source = source.replace("\\", "/")
+        if marker in normalized_source:
+            relative_asset = normalized_source.split(marker, 1)[1]
+            fallback = PROJECT_ROOT / "web_assets" / "PostApocalypse_AssetPack_v1.1.2" / relative_asset
+            if fallback.exists():
+                return fallback.resolve()
+
+        return image_path
 
     @staticmethod
     def _load_tileset_image(image_path: Path | None) -> pygame.Surface | None:
@@ -189,6 +221,8 @@ class TiledMap:
 
                 tile, tileset = self._get_tile_surface(raw_gid)
                 if tile is not None:
+                    self._max_tile_width = max(self._max_tile_width, tile.get_width())
+                    self._max_tile_height = max(self._max_tile_height, tile.get_height())
                     offset_x = tileset.tile_offset_x * self.scale if tileset is not None else 0
                     offset_y = tileset.tile_offset_y * self.scale if tileset is not None else 0
                     draw_x = world_x + offset_x
@@ -207,6 +241,17 @@ class TiledMap:
                     self.door_triggers.append(trigger)
                 elif trigger.trigger_type == "exit":
                     self.exit_triggers.append(trigger)
+
+    def _build_draw_buckets(self) -> None:
+        self._layer_tile_buckets = []
+        for layer in self.layers:
+            buckets: dict[tuple[int, int], list[tuple[int, int, pygame.Surface]]] = {}
+            for world_x, world_y, tile in layer.tiles:
+                bucket_key = (world_x // DRAW_BUCKET_SIZE, world_y // DRAW_BUCKET_SIZE)
+                buckets.setdefault(bucket_key, []).append((world_x, world_y, tile))
+            self._layer_tile_buckets.append(
+                {bucket_key: tuple(items) for bucket_key, items in buckets.items()}
+            )
 
     def _get_tile_surface(self, raw_gid: int) -> tuple[pygame.Surface | None, TileSet | None]:
         gid = raw_gid & TILED_GID_MASK
@@ -341,15 +386,17 @@ class TiledMap:
         return cluster
 
     def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2) -> None:
-        view_rect = pygame.Rect(
-            int(camera_offset.x) - self.render_tile_width,
-            int(camera_offset.y) - self.render_tile_height,
-            surface.get_width() + self.render_tile_width * 2,
-            surface.get_height() + self.render_tile_height * 2,
-        )
+        left = int(camera_offset.x) - self._max_tile_width
+        top = int(camera_offset.y) - self._max_tile_height
+        right = int(camera_offset.x) + surface.get_width() + self._max_tile_width
+        bottom = int(camera_offset.y) + surface.get_height() + self._max_tile_height
+        min_bucket_x = left // DRAW_BUCKET_SIZE
+        max_bucket_x = right // DRAW_BUCKET_SIZE
+        min_bucket_y = top // DRAW_BUCKET_SIZE
+        max_bucket_y = bottom // DRAW_BUCKET_SIZE
 
-        for layer in self.layers:
-            for world_x, world_y, tile in layer.tiles:
-                tile_rect = pygame.Rect(world_x, world_y, tile.get_width(), tile.get_height())
-                if view_rect.colliderect(tile_rect):
-                    surface.blit(tile, (world_x - camera_offset.x, world_y - camera_offset.y))
+        for buckets in self._layer_tile_buckets:
+            for bucket_y in range(min_bucket_y, max_bucket_y + 1):
+                for bucket_x in range(min_bucket_x, max_bucket_x + 1):
+                    for world_x, world_y, tile in buckets.get((bucket_x, bucket_y), ()):
+                        surface.blit(tile, (world_x - camera_offset.x, world_y - camera_offset.y))

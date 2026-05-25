@@ -24,14 +24,25 @@ from zombie import Zombie
 
 WIDTH, HEIGHT = 960, 540
 WINDOW_WIDTH, WINDOW_HEIGHT = 1600, 900
+TARGET_FPS = 60
+COLLISION_BUCKET_SIZE = 128
 WORLD_WIDTH, WORLD_HEIGHT = 2200, 1400
 PROJECT_ROOT = Path(__file__).resolve().parent
 IS_WEB = sys.platform == "emscripten"
 LOCAL_MAP_ROOT = PROJECT_ROOT / "maps"
 MAP_ROOT = LOCAL_MAP_ROOT if LOCAL_MAP_ROOT.exists() else PROJECT_ROOT.parent
-MAP_SEQUENCE = [
+NORMAL_MAP_PATHS = [
     MAP_ROOT / "Mapa 1.1.tmj",
+    MAP_ROOT / "Mapa 2.tmj",
+    MAP_ROOT / "Mapa 3.tmj",
 ]
+BOSS_MAP_PATHS = [
+    MAP_ROOT / "Boss 1.tmj",
+    MAP_ROOT / "Boss 2.tmj",
+]
+BOSS_MAP_PATH = BOSS_MAP_PATHS[0]
+MAP_SEQUENCE = NORMAL_MAP_PATHS
+MAPS_BEFORE_BOSS = 3
 INTERIOR_MAP_PATHS = [
     MAP_ROOT / "interior 1.1.tmj",
     MAP_ROOT / "Interior 1.tmj",
@@ -206,7 +217,6 @@ NODE_TYPES: Dict[str, Dict[str, object]] = {
             "balas",
             "balas",
             "pistola",
-            "pistola_perfurante",
             "polvora",
             "comida",
         ],
@@ -222,9 +232,7 @@ NODE_TYPES: Dict[str, Dict[str, object]] = {
             "cartuchos",
             "polvora",
             "pistola",
-            "pistola_incendiaria",
             "escopeta",
-            "escopeta_incendiaria",
             "kit_medico",
         ],
         "drops": (2, 5),
@@ -234,12 +242,15 @@ NODE_TYPES: Dict[str, Dict[str, object]] = {
 
 OBJECT_SPRITE_ROOT = Path(__file__).resolve().parent / "sprites" / "objects"
 SHOT_SPRITE_ROOT = Path(__file__).resolve().parent / "sprites" / "Shot"
+AXE_SPRITE_ROOT = PROJECT_ROOT / "sprites" / "Zombie_Axe" / "Axe"
 UI_SPRITE_ROOT = PROJECT_ROOT / "UIMENU"
 _RAW_SPRITE_CACHE: Dict[str, pygame.Surface] = {}
 _SCALED_SPRITE_CACHE: Dict[Tuple[str, float], pygame.Surface] = {}
 _COMPOSITE_SPRITE_CACHE: Dict[Tuple[str, str, str, str, float], pygame.Surface] = {}
 _UI_SPRITE_CACHE: Dict[Tuple[str, int], pygame.Surface] = {}
 _SHOT_IMPACT_CACHE: List[List[pygame.Surface]] | None = None
+_AXE_PROJECTILE_CACHE: Dict[str, List[pygame.Surface]] = {}
+_SHADOW_CACHE: Dict[Tuple[Tuple[int, int], int], pygame.Surface] = {}
 
 INVENTORY_ITEM_ORDER = [
     "madeira",
@@ -312,17 +323,45 @@ AMMO_LOOT_RANGES = {
 }
 ITEM_TINTS = {
     "pistola_incendiaria": (255, 132, 86),
-    "pistola_perfurante": (100, 185, 255),
+    "pistola_perfurante": (90, 170, 255),
     "escopeta_incendiaria": (255, 102, 76),
     "balas_incendiarias": (255, 132, 86),
-    "balas_perfurantes": (100, 185, 255),
+    "balas_perfurantes": (90, 170, 255),
     "cartuchos_incendiarios": (255, 132, 86),
 }
+ADVANCED_WEAPON_ITEMS = {"pistola_incendiaria", "pistola_perfurante", "escopeta_incendiaria"}
 
 ZOMBIE_VARIANTS: Dict[str, Dict[str, float | int]] = {
     "axe": {"weight": 7, "speed": 1.0, "health": 1.0, "radius": 12},
     "small": {"weight": 4, "speed": 1.68, "health": 0.72, "radius": 10},
     "big": {"weight": 3, "speed": 0.66, "health": 1.95, "radius": 18},
+}
+BOSS_ZOMBIE_STATS: Dict[str, Dict[str, object]] = {
+    "boss 1.tmj": {
+        "name": "CHEFE",
+        "message": "O chefe apareceu. Derrote-o para liberar o teleporte.",
+        "zombie_type": "big",
+        "speed": 58.0,
+        "health": 900,
+        "radius": 44,
+        "sprite_scale": 1.85,
+        "attack_damage": 28,
+        "attack_range": 64.0,
+        "can_throw_axe": False,
+    },
+    "boss 2.tmj": {
+        "name": "CHEFE MACHADO",
+        "message": "O chefe do machado apareceu. A primeira metade e corpo a corpo.",
+        "phase_two_message": "Segunda fase! O chefe comecou a arremessar o machado.",
+        "zombie_type": "axe",
+        "speed": 42.0,
+        "health": 1250,
+        "radius": 46,
+        "sprite_scale": 2.05,
+        "attack_damage": 32,
+        "attack_range": 72.0,
+        "can_throw_axe": False,
+    },
 }
 
 DECOR_VARIANTS: Dict[str, List[Dict[str, object]]] = {
@@ -522,8 +561,13 @@ def _build_facade_sprite(
 
 
 def _make_shadow(size: Tuple[int, int], alpha: int = 110) -> pygame.Surface:
+    cache_key = (size, alpha)
+    cached = _SHADOW_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     shadow = pygame.Surface(size, pygame.SRCALPHA)
     pygame.draw.ellipse(shadow, (18, 22, 24, alpha), shadow.get_rect())
+    _SHADOW_CACHE[cache_key] = shadow
     return shadow
 
 
@@ -535,9 +579,10 @@ def _dim_sprite(sprite: pygame.Surface) -> pygame.Surface:
 
 def _tint_sprite(sprite: pygame.Surface, color: Tuple[int, int, int]) -> pygame.Surface:
     tinted = sprite.copy()
+    tinted.fill((188, 188, 188, 255), special_flags=pygame.BLEND_RGBA_MULT)
     overlay = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
-    overlay.fill((*color, 0))
-    tinted.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+    overlay.fill((*color, 72))
+    tinted.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
     return tinted
 
 
@@ -560,6 +605,35 @@ def _load_shot_impact_frames() -> List[pygame.Surface]:
         variants.append(frames)
     _SHOT_IMPACT_CACHE = variants
     return random.choice(_SHOT_IMPACT_CACHE)
+
+
+def _load_axe_projectile_frames(direction_name: str) -> List[pygame.Surface]:
+    cache_key = direction_name
+    cached = _AXE_PROJECTILE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if direction_name == "left":
+        spritesheet_path = AXE_SPRITE_ROOT / "Axe_Side-left_Thrown-Sheet9.png"
+    elif direction_name == "right":
+        spritesheet_path = AXE_SPRITE_ROOT / "Axe_Side_Thrown-Sheet9.png"
+    else:
+        spritesheet_path = AXE_SPRITE_ROOT / "Axe_Vertical_Thrown-Sheet9.png"
+
+    frame_count = 9
+    sheet = pygame.image.load(str(spritesheet_path)).convert_alpha()
+    frame_width = sheet.get_width() // frame_count
+    frame_height = sheet.get_height()
+    frames: List[pygame.Surface] = []
+    for frame_index in range(frame_count):
+        frame = pygame.Surface((frame_width, frame_height), pygame.SRCALPHA)
+        frame.blit(sheet, (0, 0), pygame.Rect(frame_index * frame_width, 0, frame_width, frame_height))
+        if direction_name == "up":
+            frame = pygame.transform.flip(frame, False, True)
+        frames.append(pygame.transform.scale(frame, (frame_width * 3, frame_height * 3)))
+
+    _AXE_PROJECTILE_CACHE[cache_key] = frames
+    return frames
 
 
 class Decoration:
@@ -619,8 +693,16 @@ class SearchNode:
             self._sprite = _load_scaled_sprite(str(variant["path"]), float(variant["scale"]))
             self._searched_sprite = _dim_sprite(self._sprite)
             self.radius = max(18, int(max(self._sprite.get_width(), self._sprite.get_height()) * 0.42))
+            self._shadow = _make_shadow(
+                (
+                    max(10, int(self._sprite.get_width() * 0.62)),
+                    max(5, int(self._sprite.get_height() * 0.18)),
+                ),
+                alpha=105,
+            )
         else:
             self.radius = radius or SEARCH_RANGE
+            self._shadow = None
         self.searched = False
 
     def search(self) -> Tuple[Dict[str, int], int]:
@@ -650,13 +732,9 @@ class SearchNode:
         draw_pos = self.position - camera_offset
         sprite = self._searched_sprite if self.searched else self._sprite
         sprite_rect = sprite.get_rect(midbottom=(round(draw_pos.x), round(draw_pos.y + 8)))
-        shadow = _make_shadow(
-            (
-                max(10, int(sprite_rect.width * 0.62)),
-                max(5, int(sprite_rect.height * 0.18)),
-            ),
-            alpha=105,
-        )
+        shadow = self._shadow
+        if shadow is None:
+            return
         shadow_rect = shadow.get_rect(center=(sprite_rect.centerx + 2, sprite_rect.bottom - 3))
         surface.blit(shadow, shadow_rect)
         surface.blit(sprite, sprite_rect)
@@ -675,10 +753,12 @@ class ShotImpact:
         position: Tuple[float, float] | pygame.Vector2,
         origin: Tuple[float, float] | pygame.Vector2 | None = None,
         color: Tuple[int, int, int] = (255, 224, 120),
+        effect: str = "",
     ) -> None:
         self.position = pygame.Vector2(position)
         self.origin = pygame.Vector2(origin) if origin is not None else self.position.copy()
         self.color = color
+        self.effect = effect
         self.animation_time = 0.0
         self.frames = _load_shot_impact_frames()
         self.fps = 18.0
@@ -698,15 +778,71 @@ class ShotImpact:
         end = self.position - camera_offset
         bullet_pos = start.lerp(end, progress)
         if alpha > 0 and start.distance_to(end) > 2:
-            trail = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
-            pygame.draw.line(trail, (*self.color, alpha), start, end, 2)
-            glow = tuple(min(255, component + 35) for component in self.color)
-            pygame.draw.circle(trail, (*glow, min(255, alpha + 35)), bullet_pos, 3)
-            surface.blit(trail, (0, 0))
+            fade = alpha / 255.0
+            trail_color = tuple(max(0, min(255, int(component * fade))) for component in self.color)
+            glow = tuple(max(0, min(255, int((component + 35) * fade))) for component in self.color)
+            width = 3 if self.effect == "fire" else 2
+            pygame.draw.line(surface, trail_color, start, end, width)
+            pygame.draw.circle(surface, glow, bullet_pos, 4 if self.effect == "fire" else 3)
+            if self.effect == "fire":
+                flame_color = (255, 150, 48)
+                pygame.draw.line(surface, (*flame_color, alpha), start.lerp(end, 0.18), bullet_pos, 1)
+                pygame.draw.circle(surface, (255, 80, 32), bullet_pos + pygame.Vector2(0, -3), 2)
+            elif self.effect == "ice":
+                pygame.draw.circle(surface, (150, 215, 255), bullet_pos, 5, 1)
 
         frame_index = min(int(self.animation_time), len(self.frames) - 1)
         sprite = self.frames[frame_index]
         surface.blit(sprite, sprite.get_rect(center=(round(end.x), round(end.y))))
+
+
+class AxeProjectile:
+    def __init__(
+        self,
+        position: Tuple[float, float] | pygame.Vector2,
+        direction: pygame.Vector2,
+        damage: int,
+        max_distance: float = 420.0,
+        speed: float = 330.0,
+    ) -> None:
+        self.position = pygame.Vector2(position)
+        self.origin = self.position.copy()
+        self.direction = pygame.Vector2(direction)
+        if self.direction.length_squared() <= 0:
+            self.direction = pygame.Vector2(1, 0)
+        self.direction = self.direction.normalize()
+        self.damage = damage
+        self.max_distance = max_distance
+        self.speed = speed
+        self.radius = 15
+        self.animation_time = 0.0
+        self.has_hit = False
+        self.direction_name = self._direction_name(self.direction)
+        self.frames = _load_axe_projectile_frames(self.direction_name)
+
+    @staticmethod
+    def _direction_name(direction: pygame.Vector2) -> str:
+        if abs(direction.x) > abs(direction.y):
+            return "right" if direction.x > 0 else "left"
+        return "down" if direction.y > 0 else "up"
+
+    def update(self, dt: float) -> None:
+        self.position += self.direction * self.speed * dt
+        self.animation_time += dt * 14.0
+
+    def is_finished(self) -> bool:
+        return self.has_hit or self.position.distance_to(self.origin) >= self.max_distance
+
+    def can_damage_player(self, player_position: Tuple[float, float], player_radius: int) -> bool:
+        if self.has_hit:
+            return False
+        return self.position.distance_to(pygame.Vector2(player_position)) <= self.radius + player_radius
+
+    def draw(self, surface: pygame.Surface, camera_offset: pygame.Vector2) -> None:
+        frame_index = int(self.animation_time) % len(self.frames)
+        sprite = self.frames[frame_index]
+        draw_pos = self.position - camera_offset
+        surface.blit(sprite, sprite.get_rect(center=(round(draw_pos.x), round(draw_pos.y))))
 
 
 class FloatingPopup:
@@ -777,6 +913,13 @@ class Game:
         pygame.display.set_caption("Jogo de Sobrevivencia Zumbi")
         self.window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         self.screen = pygame.Surface((WIDTH, HEIGHT)).convert()
+        self._present_surface = (
+            pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT)).convert()
+            if (WINDOW_WIDTH, WINDOW_HEIGHT) != (WIDTH, HEIGHT)
+            else self.screen
+        )
+        self._menu_overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        self._menu_overlay.fill((8, 10, 13, 176))
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("consolas", 18)
         self.small_font = pygame.font.SysFont("consolas", 16)
@@ -815,6 +958,7 @@ class Game:
 
         self.zombies: List[Zombie] = []
         self.shot_impacts: List[ShotImpact] = []
+        self.axe_projectiles: List[AxeProjectile] = []
         self._floating_popups: List[FloatingPopup] = []
         self.nodes: List[SearchNode] = []
         self.decorations: List[Decoration] = []
@@ -822,6 +966,7 @@ class Game:
         self.exits: List[MapTrigger] = []
         self.tile_map: TiledMap | None = None
         self.collision_rects: List[pygame.Rect] = []
+        self._collision_buckets: Dict[Tuple[int, int], List[pygame.Rect]] = {}
 
         self._spawn_timer = 0.0
         self._starvation_timer = 0.0
@@ -837,6 +982,13 @@ class Game:
         self._base_position = pygame.Vector2(WORLD_WIDTH * 0.48, WORLD_HEIGHT * 0.52)
         self._current_map_index = 0
         self._current_map_path = self._first_existing_path(MAP_SEQUENCE, TILED_MAP_PATH)
+        self._normal_maps_completed = 0
+        self._progress_level = 0
+        self._bosses_defeated = 0
+        self._boss_zombie: Zombie | None = None
+        self._boss_defeated = False
+        self._boss_phase_two_active = False
+        self._boss_name = "CHEFE"
         self._inside_interior = False
         self._return_map_path: Path | None = None
         self._return_map_index = 0
@@ -851,12 +1003,69 @@ class Game:
         self._reset_game()
         self._play_title_music()
 
+    def _present_frame(self) -> None:
+        if (WINDOW_WIDTH, WINDOW_HEIGHT) == (WIDTH, HEIGHT):
+            self.window.blit(self.screen, (0, 0))
+        else:
+            # Nearest-neighbor scaling is much cheaper and keeps the pixel-art look.
+            pygame.transform.scale(self.screen, (WINDOW_WIDTH, WINDOW_HEIGHT), self._present_surface)
+            self.window.blit(self._present_surface, (0, 0))
+        pygame.display.flip()
+
     @staticmethod
     def _first_existing_path(paths: List[Path], fallback: Path) -> Path:
         for path in paths:
             if path.exists():
                 return path
         return fallback
+
+    def _available_normal_maps(self) -> List[Path]:
+        return [path for path in NORMAL_MAP_PATHS if path.exists()]
+
+    def _is_boss_map_path(self, map_path: Path | None = None) -> bool:
+        path = map_path or self._current_map_path
+        return any(path.name.lower() == boss_path.name.lower() for boss_path in BOSS_MAP_PATHS)
+
+    def _available_boss_maps(self) -> List[Path]:
+        return [path for path in BOSS_MAP_PATHS if path.exists()]
+
+    def _next_boss_map_path(self) -> Path | None:
+        available_bosses = self._available_boss_maps()
+        if not available_bosses:
+            return None
+        boss_index = min(self._bosses_defeated, len(available_bosses) - 1)
+        return available_bosses[boss_index]
+
+    def _boss_stats_for_map(self, map_path: Path | None = None) -> Dict[str, object]:
+        path = map_path or self._current_map_path
+        return BOSS_ZOMBIE_STATS.get(path.name.lower(), BOSS_ZOMBIE_STATS["boss 1.tmj"])
+
+    def _choose_random_normal_map(self, exclude_current: bool = False) -> Path:
+        available_maps = self._available_normal_maps()
+        if not available_maps:
+            return TILED_MAP_PATH
+        choices = available_maps
+        if exclude_current and len(available_maps) > 1:
+            current_name = self._current_map_path.name.lower()
+            choices = [path for path in available_maps if path.name.lower() != current_name] or available_maps
+        return random.choice(choices)
+
+    def _normal_map_index(self, map_path: Path) -> int:
+        for index, path in enumerate(NORMAL_MAP_PATHS):
+            if path.name.lower() == map_path.name.lower():
+                return index
+        return 0
+
+    def _boss_is_alive(self) -> bool:
+        return (
+            self._is_boss_map_path()
+            and not self._boss_defeated
+            and self._boss_zombie is not None
+            and not self._boss_zombie.is_dying()
+        )
+
+    def _is_horde_map(self) -> bool:
+        return self._current_map_path.name.lower() == "mapa 3.tmj"
 
     def _load_settings(self) -> Dict[str, int]:
         default_settings = {"master": 80, "music": 70, "sfx": 80}
@@ -1021,6 +1230,7 @@ class Game:
         self.inventory = Inventory()
         self.zombies = []
         self.shot_impacts = []
+        self.axe_projectiles = []
         self._floating_popups = []
         self._spawn_timer = 0.0
         self._starvation_timer = 0.0
@@ -1030,8 +1240,15 @@ class Game:
         self._attack_timer = 0.0
         self._transition_cooldown = 0.0
         self._camera = pygame.Vector2()
-        self._current_map_index = 0
-        self._current_map_path = self._first_existing_path(MAP_SEQUENCE, TILED_MAP_PATH)
+        self._current_map_path = self._first_existing_path([NORMAL_MAP_PATHS[0]], TILED_MAP_PATH)
+        self._current_map_index = self._normal_map_index(self._current_map_path)
+        self._normal_maps_completed = 0
+        self._progress_level = 0
+        self._bosses_defeated = 0
+        self._boss_zombie = None
+        self._boss_defeated = False
+        self._boss_phase_two_active = False
+        self._boss_name = "CHEFE"
         self._inside_interior = False
         self._return_map_path = None
         self._return_map_index = 0
@@ -1050,13 +1267,48 @@ class Game:
         self.nodes.clear()
         self.zombies.clear()
         self.shot_impacts.clear()
+        self.axe_projectiles.clear()
         self._floating_popups.clear()
         self.decorations.clear()
         self.doors.clear()
         self.exits.clear()
-        self.collision_rects.clear()
+        self._set_collision_rects([])
         self.tile_map = None
         self._interior_exit = None
+        self._boss_zombie = None
+        self._boss_phase_two_active = False
+
+    def _set_collision_rects(self, rects: List[pygame.Rect]) -> None:
+        self.collision_rects = list(rects)
+        buckets: Dict[Tuple[int, int], List[pygame.Rect]] = {}
+        for rect in self.collision_rects:
+            min_x = rect.left // COLLISION_BUCKET_SIZE
+            max_x = rect.right // COLLISION_BUCKET_SIZE
+            min_y = rect.top // COLLISION_BUCKET_SIZE
+            max_y = rect.bottom // COLLISION_BUCKET_SIZE
+            for bucket_y in range(min_y, max_y + 1):
+                for bucket_x in range(min_x, max_x + 1):
+                    buckets.setdefault((bucket_x, bucket_y), []).append(rect)
+        self._collision_buckets = buckets
+
+    def _nearby_collision_rects(self, area: pygame.Rect) -> List[pygame.Rect]:
+        if not self._collision_buckets:
+            return []
+        min_x = area.left // COLLISION_BUCKET_SIZE
+        max_x = area.right // COLLISION_BUCKET_SIZE
+        min_y = area.top // COLLISION_BUCKET_SIZE
+        max_y = area.bottom // COLLISION_BUCKET_SIZE
+        nearby: List[pygame.Rect] = []
+        seen: set[int] = set()
+        for bucket_y in range(min_y, max_y + 1):
+            for bucket_x in range(min_x, max_x + 1):
+                for rect in self._collision_buckets.get((bucket_x, bucket_y), ()):
+                    rect_id = id(rect)
+                    if rect_id in seen:
+                        continue
+                    seen.add(rect_id)
+                    nearby.append(rect)
+        return nearby
 
     def _generate_world(self) -> None:
         self._clear_world_content()
@@ -1096,9 +1348,12 @@ class Game:
         self.tile_map = TiledMap(map_path, scale=TILED_MAP_SCALE)
         self._current_map_path = map_path
         self._inside_interior = inside_interior
+        if not inside_interior:
+            self._boss_defeated = not self._is_boss_map_path(map_path)
+            self._boss_name = str(self._boss_stats_for_map(map_path).get("name", "CHEFE"))
         WORLD_WIDTH = self.tile_map.world_width
         WORLD_HEIGHT = self.tile_map.world_height
-        self.collision_rects = list(self.tile_map.collision_rects)
+        self._set_collision_rects(list(self.tile_map.collision_rects))
         self._base_position = self._find_open_position_near(self._default_spawn_target(inside_interior))
 
         for spawn in self.tile_map.search_nodes:
@@ -1120,8 +1375,12 @@ class Game:
                 self.doors.append(MapTrigger(trigger.trigger_type, trigger.position, max(DOOR_RANGE, trigger.radius)))
             for trigger in self.tile_map.exit_triggers:
                 self.exits.append(MapTrigger(trigger.trigger_type, trigger.position, max(EXIT_RANGE, trigger.radius)))
-            for _ in range(2):
-                self._spawn_zombie()
+            if self._is_boss_map_path(map_path):
+                self._spawn_boss_zombie()
+            else:
+                initial_zombies = 6 if self._is_horde_map() else max(1, min(4, 1 + self._progress_level))
+                for _ in range(initial_zombies):
+                    self._spawn_zombie()
         else:
             self._interior_exit = MapTrigger(
                 "interior_exit",
@@ -1129,7 +1388,12 @@ class Game:
                 DOOR_RANGE,
             )
 
-        self._set_message("Interior carregado." if inside_interior else "Mapa do Tiled carregado.")
+        if inside_interior:
+            self._set_message("Interior carregado.")
+        elif self._is_boss_map_path(map_path):
+            self._set_message(str(self._boss_stats_for_map(map_path).get("message", "O chefe apareceu.")))
+        else:
+            self._set_message("Mapa do Tiled carregado.")
         return True
 
     def _default_spawn_target(self, inside_interior: bool) -> Tuple[float, float]:
@@ -1195,7 +1459,33 @@ class Game:
             self._set_message("Voce saiu do predio.")
 
     def _use_map_exit(self, trigger: MapTrigger) -> None:
-        available_maps = [path for path in MAP_SEQUENCE if path.exists()]
+        if self._is_boss_map_path():
+            if self._boss_is_alive():
+                self._play_sfx("ui_denied")
+                self._set_message("O teleporte esta bloqueado pelo chefe.")
+                self._transition_cooldown = 0.45
+                return
+            self._normal_maps_completed = 0
+            next_path = self._choose_random_normal_map()
+            next_index = self._normal_map_index(next_path)
+        else:
+            available_maps = self._available_normal_maps()
+            if not available_maps:
+                self._play_sfx("ui_denied")
+                self._set_message("Nenhum mapa configurado.")
+                return
+
+            self._normal_maps_completed += 1
+            self._progress_level += 1
+            next_boss_path = self._next_boss_map_path()
+            if self._normal_maps_completed >= MAPS_BEFORE_BOSS and next_boss_path is not None:
+                next_path = next_boss_path
+                next_index = -1
+            else:
+                next_path = self._choose_random_normal_map(exclude_current=True)
+                next_index = self._normal_map_index(next_path)
+
+        available_maps = self._available_normal_maps()
         if not available_maps:
             self._play_sfx("ui_denied")
             self._set_message("Nenhum mapa configurado.")
@@ -1204,8 +1494,6 @@ class Game:
         old_world_height = max(1, WORLD_HEIGHT)
         player_y_ratio = pygame.Vector2(self.player.player_position).y / old_world_height
         going_right = trigger.position.x > WORLD_WIDTH * 0.5
-        next_index = (self._current_map_index + 1) % len(available_maps)
-        next_path = available_maps[next_index]
 
         self._clear_world_content()
         self._current_map_index = next_index
@@ -1220,7 +1508,10 @@ class Game:
         self.player.set_position(tuple(spawn))
         self._transition_cooldown = 0.9
         self._play_sfx("objective")
-        self._set_message("Voce continuou pela rua.")
+        if self._is_boss_map_path(next_path):
+            self._set_message("Arena do chefe. Teleportes bloqueados.")
+        else:
+            self._set_message("Voce continuou pela rua.")
 
     def _populate_decorations(self) -> None:
         decor_plan = [
@@ -1262,7 +1553,7 @@ class Game:
 
         test_rect = pygame.Rect(0, 0, radius * 2, radius * 2)
         test_rect.center = (round(point.x), round(point.y))
-        return any(test_rect.colliderect(rect) for rect in self.collision_rects)
+        return any(test_rect.colliderect(rect) for rect in self._nearby_collision_rects(test_rect))
 
     def _find_open_position_near(self, target: Tuple[float, float] | pygame.Vector2) -> pygame.Vector2:
         target = pygame.Vector2(target)
@@ -1567,18 +1858,61 @@ class Game:
             base = pygame.Vector2(near_position)
             pos = self._find_open_position_near(base + pygame.Vector2(random.randint(-120, 120), random.randint(-120, 120)))
 
+        variant_weights = self._zombie_variant_weights()
         variant_name = random.choices(
-            list(ZOMBIE_VARIANTS.keys()),
-            weights=[float(data["weight"]) for data in ZOMBIE_VARIANTS.values()],
+            list(variant_weights.keys()),
+            weights=list(variant_weights.values()),
             k=1,
         )[0]
         variant = ZOMBIE_VARIANTS[variant_name]
-        base_speed = 55.0 + (self.difficulty_scale * 5.0)
-        base_health = 24 + (self.difficulty_scale * 4.0)
+        progress_boost = min(1.0, self._progress_level * 0.08)
+        base_speed = 48.0 + (self.difficulty_scale * 5.0)
+        base_health = 20 + (self.difficulty_scale * 4.0)
         speed = base_speed * float(variant["speed"])
-        health = int(base_health * float(variant["health"]))
+        health = int(base_health * float(variant["health"]) * (0.82 + progress_boost))
         radius = int(variant["radius"])
-        self.zombies.append(Zombie(pos, speed, health=health, radius=radius, zombie_type=variant_name))
+        self.zombies.append(
+            Zombie(
+                pos,
+                speed,
+                health=max(8, health),
+                radius=radius,
+                zombie_type=variant_name,
+                can_throw_axe=variant_name == "axe" and self._progress_level >= 2,
+            )
+        )
+
+    def _zombie_variant_weights(self) -> Dict[str, float]:
+        if self._progress_level <= 0:
+            return {"axe": 10.0, "small": 1.0, "big": 0.0}
+        if self._progress_level == 1:
+            return {"axe": 8.0, "small": 3.0, "big": 0.5}
+        if self._progress_level == 2:
+            return {"axe": 7.0, "small": 4.0, "big": 1.4}
+        return {name: float(data["weight"]) for name, data in ZOMBIE_VARIANTS.items()}
+
+    def _spawn_boss_zombie(self) -> None:
+        stats = self._boss_stats_for_map()
+        center = pygame.Vector2(WORLD_WIDTH * 0.5, WORLD_HEIGHT * 0.48)
+        pos = self._find_open_position_near(center)
+        if pos.distance_to(pygame.Vector2(self.player.player_position)) < 260:
+            pos = self._find_open_position_near((WORLD_WIDTH * 0.5, WORLD_HEIGHT * 0.34))
+        self._boss_name = str(stats.get("name", "CHEFE"))
+        self._boss_phase_two_active = False
+        self._boss_zombie = Zombie(
+            pos,
+            float(stats["speed"]) + self.difficulty_scale * 2.0,
+            health=int(stats["health"]) + int(self.difficulty_scale * 80),
+            radius=int(stats["radius"]),
+            zombie_type=str(stats["zombie_type"]),
+            sprite_scale=float(stats["sprite_scale"]),
+            attack_damage=int(stats["attack_damage"]),
+            attack_range=float(stats["attack_range"]),
+            can_throw_axe=bool(stats.get("can_throw_axe", False)),
+        )
+        self.zombies.append(self._boss_zombie)
+        self._play_sfx("zombie_alert")
+        self._set_message(str(stats.get("message", "O chefe apareceu. Derrote-o para liberar o teleporte.")))
 
     def _apply_loaded_state(self, data: Dict) -> None:
         self.player.player_health = int(data.get("player_health", 100))
@@ -1967,8 +2301,8 @@ class Game:
 
     def _update_difficulty(self, dt: float) -> None:
         self.game_time += dt
-        self.difficulty_scale = 1.0 + (self.game_time / 150.0)
-        self.spawn_rate = 1.0 + (self.game_time / 180.0)
+        self.difficulty_scale = 0.78 + (self.game_time / 190.0) + (self._progress_level * 0.18)
+        self.spawn_rate = 0.72 + (self.game_time / 230.0) + (self._progress_level * 0.16)
 
     def _update_survival(self, dt: float) -> None:
         self.player.player_hunger = max(0.0, self.player.player_hunger - (0.75 * dt))
@@ -1989,11 +2323,15 @@ class Game:
             zombie.update(self.player.player_position, dt, world_rect)
             if zombie.consume_attack_started():
                 self._play_sfx(zombie.attack_sfx_name())
+            if zombie.consume_axe_throw_ready():
+                self._spawn_axe_projectile(zombie)
             self._resolve_zombie_obstacles(zombie, old_position, dt)
             if zombie.can_damage_player(self.player.player_position, self.player.radius):
-                if self.player.take_damage(10):
+                if self.player.take_damage(zombie.attack_damage):
                     self._play_sfx("player_damage")
-                    self._set_message("Voce foi atingido!")
+                    self._set_message("Golpe pesado!" if zombie is self._boss_zombie else "Voce foi atingido!")
+            if zombie.is_dying() and not zombie.loot_given:
+                self._handle_zombie_death(zombie)
         self._separate_zombies(dt)
         self.zombies = [zombie for zombie in self.zombies if not zombie.is_dead()]
 
@@ -2002,20 +2340,80 @@ class Game:
             impact.update(dt)
         self.shot_impacts = [impact for impact in self.shot_impacts if not impact.is_finished()]
 
+    def _spawn_axe_projectile(self, zombie: Zombie) -> None:
+        target = pygame.Vector2(self.player.player_position)
+        direction = target - zombie.position
+        if direction.length_squared() <= 0.01:
+            direction = pygame.Vector2(1, 0)
+        origin = zombie.position + direction.normalize() * max(18, zombie.radius * 0.7)
+        self.axe_projectiles.append(
+            AxeProjectile(
+                origin,
+                direction,
+                damage=max(12, int(zombie.attack_damage * 0.9)),
+            )
+        )
+
+    def _update_axe_projectiles(self, dt: float) -> None:
+        for projectile in self.axe_projectiles:
+            projectile.update(dt)
+            if projectile.can_damage_player(self.player.player_position, self.player.radius):
+                projectile.has_hit = True
+                if self.player.take_damage(projectile.damage):
+                    self._play_sfx("player_damage")
+                    self._set_message("Machado arremessado!")
+                continue
+            if (
+                projectile.position.x < 0
+                or projectile.position.y < 0
+                or projectile.position.x > WORLD_WIDTH
+                or projectile.position.y > WORLD_HEIGHT
+                or self._is_position_blocked(projectile.position, projectile.radius)
+            ):
+                projectile.has_hit = True
+
+        self.axe_projectiles = [projectile for projectile in self.axe_projectiles if not projectile.is_finished()]
+
+    def _update_boss_phase(self) -> None:
+        boss = self._boss_zombie
+        if boss is None or boss.is_dying() or self._boss_phase_two_active:
+            return
+        stats = self._boss_stats_for_map()
+        if str(stats.get("zombie_type", "")) != "axe":
+            return
+        if boss.health > boss.max_health * 0.5:
+            return
+
+        self._boss_phase_two_active = True
+        boss.can_throw_axe = True
+        boss.attack_damage = max(boss.attack_damage, int(stats.get("attack_damage", boss.attack_damage)) + 4)
+        boss.attack_range = max(boss.attack_range, float(stats.get("attack_range", boss.attack_range)))
+        self._play_sfx("zombie_alert")
+        self._set_message(str(stats.get("phase_two_message", "Segunda fase!")))
+
     def _update_spawns(self, dt: float) -> None:
-        if self._inside_interior:
+        if self._inside_interior or self._is_boss_map_path():
             return
 
         self._spawn_timer += dt
-        max_zombies = 4 + int(self.game_time / 180.0)
-        if self._spawn_timer >= max(20.0, 32.0 / self.spawn_rate) and len(self.zombies) < max_zombies:
+        if self._is_horde_map():
+            max_zombies = 12 + self._progress_level * 3 + int(self.game_time / 120.0)
+            spawn_interval = max(5.5, 13.0 / max(0.6, self.spawn_rate))
+            spawn_count = random.randint(2, 3 + min(2, self._progress_level))
+        else:
+            max_zombies = 3 + min(6, self._progress_level) + int(self.game_time / 210.0)
+            spawn_interval = max(12.0, 36.0 / max(0.6, self.spawn_rate))
+            spawn_count = 1
+
+        if self._spawn_timer >= spawn_interval and len(self.zombies) < max_zombies:
             self._spawn_timer = 0.0
-            unexplored_nodes = [node for node in self.nodes if not node.searched]
-            if unexplored_nodes:
-                target_node = random.choice(unexplored_nodes)
-                self._spawn_zombie(target_node.position)
-            else:
-                self._spawn_zombie()
+            for _ in range(min(spawn_count, max_zombies - len(self.zombies))):
+                unexplored_nodes = [node for node in self.nodes if not node.searched]
+                if unexplored_nodes:
+                    target_node = random.choice(unexplored_nodes)
+                    self._spawn_zombie(target_node.position)
+                else:
+                    self._spawn_zombie()
 
     def _find_nearest_node(self) -> SearchNode | None:
         player_pos = pygame.Vector2(self.player.player_position)
@@ -2160,6 +2558,26 @@ class Game:
             self._set_message("Arma repetida desmontada em recursos.")
         return granted
 
+    def _grant_boss_rewards(self) -> None:
+        rewards: Dict[str, int] = {
+            "balas_incendiarias": random.randint(8, 14),
+            "balas_perfurantes": random.randint(8, 14),
+            "cartuchos_incendiarios": random.randint(4, 7),
+            "kit_medico": 1,
+        }
+        missing_weapons = [
+            weapon_name
+            for weapon_name in ("pistola_incendiaria", "pistola_perfurante", "escopeta_incendiaria")
+            if self.inventory.get_quantity(weapon_name) <= 0
+        ]
+        for weapon_name in missing_weapons:
+            rewards[weapon_name] = 1
+        if not missing_weapons:
+            rewards.update({"metal": 6, "polvora": 4})
+
+        granted = self._grant_rewards(rewards)
+        self._add_item_popups(granted, self._boss_zombie.position if self._boss_zombie is not None else None)
+
     def _add_item_popups(self, rewards: Dict[str, int], origin: Tuple[float, float] | pygame.Vector2 | None = None) -> None:
         if not rewards:
             return
@@ -2282,7 +2700,7 @@ class Game:
                 impact_position = shot_origin + (direction * attack_range)
             else:
                 for zombie, _ in hits:
-                    self._damage_zombie(zombie, pellet_damage)
+                    self._damage_zombie(zombie, pellet_damage, stats)
                 impact_position = shot_origin + (direction * hits[-1][1])
                 hit_any = True
 
@@ -2290,7 +2708,7 @@ class Game:
             impact_position.y = max(0, min(WORLD_HEIGHT, impact_position.y))
             if effect == "fire":
                 self._apply_fire_splash(impact_position, stats, {id(zombie) for zombie, _ in hits})
-            self.shot_impacts.append(ShotImpact(impact_position, shot_origin, projectile_color))
+            self.shot_impacts.append(ShotImpact(impact_position, shot_origin, projectile_color, effect))
 
         if not hit_any:
             self._set_message("Disparo sem alvo.")
@@ -2340,17 +2758,41 @@ class Game:
             if distance > radius + zombie.radius:
                 continue
             falloff = max(0.35, 1.0 - (distance / max(1.0, radius + zombie.radius)))
-            self._damage_zombie(zombie, max(1, int(damage * falloff)))
+            self._damage_zombie(zombie, max(1, int(damage * falloff)), stats)
 
-    def _damage_zombie(self, zombie: Zombie, damage: int) -> None:
-        zombie.take_damage(damage)
+    def _handle_zombie_death(self, zombie: Zombie) -> None:
         if zombie.is_dying() and not zombie.loot_given:
             zombie.loot_given = True
             self._play_sfx("zombie_death")
-            self._set_message("Zumbi abatido. Vasculhe o corpo com E.")
+            if zombie is self._boss_zombie:
+                self._boss_defeated = True
+                self._bosses_defeated += 1
+                self._progress_level += 1
+                self._grant_boss_rewards()
+                self._set_message("Chefe derrotado. Teleportes liberados.")
+            else:
+                self._set_message("Zumbi abatido. Vasculhe o corpo com E.")
+
+    def _damage_zombie(self, zombie: Zombie, damage: int, stats: Dict[str, object] | None = None) -> None:
+        zombie.take_damage(damage)
+        self._apply_weapon_status(zombie, stats)
+        if zombie.is_dying() and not zombie.loot_given:
+            self._handle_zombie_death(zombie)
         else:
             self._play_sfx("hit_flesh")
             self._set_message("Acerto!")
+
+    def _apply_weapon_status(self, zombie: Zombie, stats: Dict[str, object] | None) -> None:
+        if stats is None or zombie.is_dying():
+            return
+        effect = str(stats.get("effect", ""))
+        if effect == "fire":
+            zombie.apply_burn(
+                float(stats.get("burn_duration", 3.0)),
+                float(stats.get("burn_dps", 7.0)),
+            )
+        elif effect == "ice":
+            zombie.apply_freeze(float(stats.get("freeze_duration", 1.8)))
 
     def _handle_heal(self, heal_pressed: bool) -> None:
         if not heal_pressed:
@@ -2460,9 +2902,10 @@ class Game:
         self._transition_cooldown = max(0.0, self._transition_cooldown - dt)
         self._update_difficulty(dt)
         self._update_survival(dt)
+        previous_player_position = pygame.Vector2(self.player.player_position)
         self.player.move(direction, dt, running)
         self.player.clamp_to_area(WORLD_WIDTH, WORLD_HEIGHT)
-        self._resolve_player_collisions()
+        self._resolve_player_collisions(previous_player_position)
         if self._gamepad_aim_vector.length_squared() > 0.04:
             aim_target = pygame.Vector2(self.player.player_position) + self._gamepad_aim_vector.normalize() * 120
             self.player.aim_at(aim_target)
@@ -2472,6 +2915,8 @@ class Game:
 
         self._update_spawns(dt)
         self._update_zombies(dt)
+        self._update_boss_phase()
+        self._update_axe_projectiles(dt)
         self._update_shot_impacts(dt)
         self._update_floating_popups(dt)
         transition_used = self._handle_map_transitions(search_pressed)
@@ -2507,14 +2952,10 @@ class Game:
 
         self._draw_gamepad_debug()
 
-        scaled_frame = pygame.transform.smoothscale(self.screen, (WINDOW_WIDTH, WINDOW_HEIGHT))
-        self.window.blit(scaled_frame, (0, 0))
-        pygame.display.flip()
+        self._present_frame()
 
     def _draw_menu_background_overlay(self) -> None:
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((8, 10, 13, 176))
-        self.screen.blit(overlay, (0, 0))
+        self.screen.blit(self._menu_overlay, (0, 0))
 
     def _draw_main_menu(self) -> None:
         self._draw_menu_title()
@@ -2625,38 +3066,78 @@ class Game:
         text = self.menu_font.render(label, True, color)
         self.screen.blit(text, text.get_rect(center=sprite_rect.center))
 
-    def _resolve_player_collisions(self) -> None:
+    def _resolve_player_collisions(self, previous_position: pygame.Vector2 | None = None) -> None:
         if not self.collision_rects:
             return
 
         position = pygame.Vector2(self.player.player_position)
-        player_rect = self._entity_collision_rect(position, self.player.radius)
-
-        for rect in self.collision_rects:
-            if not player_rect.colliderect(rect):
-                continue
-
-            overlap_left = player_rect.right - rect.left
-            overlap_right = rect.right - player_rect.left
-            overlap_top = player_rect.bottom - rect.top
-            overlap_bottom = rect.bottom - player_rect.top
-            smallest = min(overlap_left, overlap_right, overlap_top, overlap_bottom)
-
-            if smallest == overlap_left:
-                position.x -= overlap_left
-            elif smallest == overlap_right:
-                position.x += overlap_right
-            elif smallest == overlap_top:
-                position.y -= overlap_top
-            else:
-                position.y += overlap_bottom
-
+        if previous_position is not None:
+            previous_position = pygame.Vector2(previous_position)
+            target_position = position.copy()
+            position = previous_position.copy()
+            position = self._resolve_player_axis(position, target_position.x, axis="x")
+            position = self._resolve_player_axis(position, target_position.y, axis="y")
+        else:
             player_rect = self._entity_collision_rect(position, self.player.radius)
+
+            for rect in self._nearby_collision_rects(player_rect.inflate(self.player.radius * 4, self.player.radius * 4)):
+                if not player_rect.colliderect(rect):
+                    continue
+
+                overlap_left = player_rect.right - rect.left
+                overlap_right = rect.right - player_rect.left
+                overlap_top = player_rect.bottom - rect.top
+                overlap_bottom = rect.bottom - player_rect.top
+                smallest = min(overlap_left, overlap_right, overlap_top, overlap_bottom)
+
+                if smallest == overlap_left:
+                    position.x -= overlap_left
+                elif smallest == overlap_right:
+                    position.x += overlap_right
+                elif smallest == overlap_top:
+                    position.y -= overlap_top
+                else:
+                    position.y += overlap_bottom
+
+                player_rect = self._entity_collision_rect(position, self.player.radius)
 
         radius = self.player.radius
         position.x = max(radius, min(WORLD_WIDTH - radius, position.x))
         position.y = max(radius, min(WORLD_HEIGHT - radius, position.y))
         self.player.set_position((position.x, position.y))
+
+    def _resolve_player_axis(self, position: pygame.Vector2, target_value: float, axis: str) -> pygame.Vector2:
+        resolved = position.copy()
+        if axis == "x":
+            delta = target_value - resolved.x
+            if abs(delta) <= 0.001:
+                return resolved
+            resolved.x = target_value
+        else:
+            delta = target_value - resolved.y
+            if abs(delta) <= 0.001:
+                return resolved
+            resolved.y = target_value
+
+        collision_rect = self._entity_collision_rect(resolved, self.player.radius)
+        nearby_rects = self._nearby_collision_rects(collision_rect.inflate(self.player.radius * 3, self.player.radius * 3))
+        for rect in nearby_rects:
+            if not collision_rect.colliderect(rect):
+                continue
+
+            if axis == "x":
+                if delta > 0:
+                    resolved.x = rect.left - self.player.radius
+                else:
+                    resolved.x = rect.right + self.player.radius
+            else:
+                if delta > 0:
+                    resolved.y = rect.top - self.player.radius
+                else:
+                    resolved.y = rect.bottom
+            collision_rect = self._entity_collision_rect(resolved, self.player.radius)
+
+        return resolved
 
     def _player_collision_rect(self, position: pygame.Vector2) -> pygame.Rect:
         return self._entity_collision_rect(position, self.player.radius)
@@ -2670,7 +3151,7 @@ class Game:
         if position.x < radius or position.y < radius or position.x > WORLD_WIDTH - radius or position.y > WORLD_HEIGHT - radius:
             return True
         collision_rect = self._entity_collision_rect(position, radius)
-        return any(collision_rect.colliderect(rect) for rect in self.collision_rects)
+        return any(collision_rect.colliderect(rect) for rect in self._nearby_collision_rects(collision_rect))
 
     def _movement_crosses_obstacle(self, start: pygame.Vector2, end: pygame.Vector2, radius: int) -> bool:
         movement = end - start
@@ -2687,7 +3168,7 @@ class Game:
 
     def _push_entity_out_of_obstacles(self, position: pygame.Vector2, radius: int) -> pygame.Vector2:
         collision_rect = self._entity_collision_rect(position, radius)
-        for rect in self.collision_rects:
+        for rect in self._nearby_collision_rects(collision_rect.inflate(radius * 4, radius * 4)):
             if not collision_rect.colliderect(rect):
                 continue
 
@@ -2793,9 +3274,7 @@ class Game:
         if self._message_timer > 0:
             self._message_timer = max(0.0, self._message_timer - dt)
 
-        scaled_frame = pygame.transform.smoothscale(self.screen, (WINDOW_WIDTH, WINDOW_HEIGHT))
-        self.window.blit(scaled_frame, (0, 0))
-        pygame.display.flip()
+        self._present_frame()
 
     def _draw_world_scene(self) -> None:
         self._draw_ground()
@@ -2807,6 +3286,8 @@ class Game:
             world_drawables.append((node.position.y, 2, node))
         for zombie in self.zombies:
             world_drawables.append((zombie.position.y, 3, zombie))
+        for projectile in self.axe_projectiles:
+            world_drawables.append((projectile.position.y, 5, projectile))
         for impact in self.shot_impacts:
             world_drawables.append((impact.position.y, 5, impact))
         world_drawables.append((self.player.player_position[1], 4, self.player))
@@ -2828,6 +3309,8 @@ class Game:
         else:
             max_camera_y = WORLD_HEIGHT - HEIGHT + BOTTOM_WORLD_PADDING
             self._camera.y = max(0, min(max_camera_y, player_pos.y - (HEIGHT / 2)))
+        self._camera.x = round(self._camera.x)
+        self._camera.y = round(self._camera.y)
 
     def screen_to_world(self, screen_position: Tuple[int, int]) -> pygame.Vector2:
         return pygame.Vector2(screen_position) + self._camera
@@ -2945,6 +3428,7 @@ class Game:
             self.screen.blit(text, (12 + padding, 92 + padding + index * line_height))
 
     def _draw_ui(self) -> None:
+        self._draw_boss_health_bar()
         self._draw_icon_meter(
             18,
             18,
@@ -2969,6 +3453,31 @@ class Game:
             self._draw_inventory_panel()
         if self._show_crafting:
             self._draw_crafting_panel()
+
+    def _draw_boss_health_bar(self) -> None:
+        boss = self._boss_zombie
+        if boss is None or boss.is_dying():
+            return
+
+        width = 520
+        height = 18
+        x = (WIDTH - width) // 2
+        y = 18
+        ratio = max(0.0, min(1.0, boss.health / max(1, boss.max_health)))
+        frame_rect = pygame.Rect(x, y, width, height)
+        fill_rect = frame_rect.inflate(-4, -4)
+        fill_rect.width = int((width - 8) * ratio)
+
+        panel = pygame.Surface((width, 38), pygame.SRCALPHA)
+        pygame.draw.rect(panel, (8, 10, 12, 218), pygame.Rect(0, 8, width, height + 8))
+        pygame.draw.rect(panel, PALETTE["panel_edge"], pygame.Rect(0, 8, width, height + 8), 2)
+        pygame.draw.rect(panel, (82, 18, 22), pygame.Rect(4, 12, width - 8, height))
+        pygame.draw.rect(panel, (202, 55, 50), pygame.Rect(4, 12, fill_rect.width, height))
+        pygame.draw.rect(panel, (255, 148, 110), pygame.Rect(4, 12, fill_rect.width, 4))
+
+        title = self.small_font.render(self._boss_name, True, PALETTE["text"])
+        panel.blit(title, title.get_rect(center=(width // 2, 7)))
+        self.screen.blit(panel, (x, y))
 
     def _draw_quick_access_bar(self) -> None:
         scale = 3
@@ -3379,7 +3888,7 @@ class Game:
 
     async def run(self) -> None:
         while self.is_game_running:
-            dt = self.clock.tick(60) / 1000.0
+            dt = self.clock.tick(TARGET_FPS) / 1000.0
             if IS_WEB:
                 await asyncio.sleep(0)
             if self._screen_state == "playing":

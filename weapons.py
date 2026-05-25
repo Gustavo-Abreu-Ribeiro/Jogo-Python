@@ -34,6 +34,8 @@ WEAPONS: Dict[str, Dict[str, float | int | str | tuple[int, int, int]]] = {
         "effect": "fire",
         "splash_radius": 54,
         "splash_damage": 12,
+        "burn_duration": 3.2,
+        "burn_dps": 7,
     },
     "pistola_perfurante": {
         "family": "pistola",
@@ -47,8 +49,8 @@ WEAPONS: Dict[str, Dict[str, float | int | str | tuple[int, int, int]]] = {
         "hit_width": 3,
         "visible_rounds": 6,
         "projectile_color": (105, 190, 255),
-        "effect": "pierce",
-        "pierce": 2,
+        "effect": "ice",
+        "freeze_duration": 1.7,
     },
     "escopeta": {
         "family": "escopeta",
@@ -78,6 +80,8 @@ WEAPONS: Dict[str, Dict[str, float | int | str | tuple[int, int, int]]] = {
         "effect": "fire",
         "splash_radius": 46,
         "splash_damage": 10,
+        "burn_duration": 3.8,
+        "burn_dps": 9,
     },
 }
 
