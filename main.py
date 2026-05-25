@@ -28,6 +28,8 @@ TARGET_FPS = 60
 COLLISION_BUCKET_SIZE = 128
 WORLD_WIDTH, WORLD_HEIGHT = 2200, 1400
 PROJECT_ROOT = Path(__file__).resolve().parent
+GAME_TITLE = "Dead Streets"
+GAME_SUBTITLE = "ZOMBIE SURVIVAL"
 IS_WEB = sys.platform == "emscripten"
 LOCAL_MAP_ROOT = PROJECT_ROOT / "maps"
 MAP_ROOT = LOCAL_MAP_ROOT if LOCAL_MAP_ROOT.exists() else PROJECT_ROOT.parent
@@ -68,6 +70,7 @@ START_CLEAR_RADIUS = 170
 ZOMBIE_AVOIDANCE_ANGLES = (0, 25, -25, 50, -50, 85, -85, 125, -125, 180)
 ZOMBIE_SEPARATION_STRENGTH = 58.0
 ZOMBIE_SEPARATION_ITERATIONS = 2
+ZOMBIE_SEPARATION_BUCKET_SIZE = 96
 BOTTOM_WORLD_PADDING = 118
 GAMEPAD_A = 0
 GAMEPAD_B = 1
@@ -916,7 +919,7 @@ class Game:
         except pygame.error:
             self._audio_enabled = False
         pygame.init()
-        pygame.display.set_caption("Jogo de Sobrevivencia Zumbi")
+        pygame.display.set_caption(GAME_TITLE)
         self.window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         self.screen = pygame.Surface((WIDTH, HEIGHT)).convert()
         self._present_surface = (
@@ -926,11 +929,13 @@ class Game:
         )
         self._menu_overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         self._menu_overlay.fill((8, 10, 13, 176))
+        self._damage_overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("consolas", 18)
         self.small_font = pygame.font.SysFont("consolas", 16)
         self.menu_font = pygame.font.SysFont("consolas", 20, bold=True)
         self.title_font = pygame.font.SysFont("consolas", 56, bold=True)
+        self._menu_title_layers = self._build_menu_title_layers()
 
         self.game_time: float = 0.0
         self.difficulty_scale: float = 1.0
@@ -968,6 +973,7 @@ class Game:
         self._floating_popups: List[FloatingPopup] = []
         self.nodes: List[SearchNode] = []
         self.decorations: List[Decoration] = []
+        self._static_world_drawables: List[Tuple[float, int, object]] = []
         self.doors: List[MapTrigger] = []
         self.exits: List[MapTrigger] = []
         self._occupied_exit_triggers: set[int] = set()
@@ -1018,6 +1024,15 @@ class Game:
             pygame.transform.scale(self.screen, (WINDOW_WIDTH, WINDOW_HEIGHT), self._present_surface)
             self.window.blit(self._present_surface, (0, 0))
         pygame.display.flip()
+
+    def _build_menu_title_layers(self) -> Dict[str, pygame.Surface]:
+        return {
+            "shadow": self.title_font.render(GAME_TITLE, False, (22, 24, 29)),
+            "accent": self.title_font.render(GAME_TITLE, False, PALETTE["accent"]),
+            "text": self.title_font.render(GAME_TITLE, False, PALETTE["text"]),
+            "glitch": self.title_font.render(GAME_TITLE, False, PALETTE["danger"]),
+            "subtitle": self.small_font.render(GAME_SUBTITLE, False, PALETTE["text_soft"]),
+        }
 
     @staticmethod
     def _first_existing_path(paths: List[Path], fallback: Path) -> Path:
@@ -1288,6 +1303,7 @@ class Game:
         self.axe_projectiles.clear()
         self._floating_popups.clear()
         self.decorations.clear()
+        self._static_world_drawables.clear()
         self.doors.clear()
         self.exits.clear()
         self._occupied_exit_triggers.clear()
@@ -1358,6 +1374,7 @@ class Game:
 
         for _ in range(6):
             self._spawn_zombie()
+        self._rebuild_static_world_drawables()
 
     def _load_tiled_world(self, map_path: Path, inside_interior: bool = False) -> bool:
         if not map_path.exists():
@@ -1413,6 +1430,7 @@ class Game:
             self._set_message(str(self._boss_stats_for_map(map_path).get("message", "O chefe apareceu.")))
         else:
             self._set_message("Mapa do Tiled carregado.")
+        self._rebuild_static_world_drawables()
         return True
 
     def _default_spawn_target(self, inside_interior: bool) -> Tuple[float, float]:
@@ -1557,6 +1575,15 @@ class Game:
                     continue
                 self.decorations.append(Decoration(decor_type, decor_pos, random.choice(scale_choices)))
                 placed += 1
+
+    def _rebuild_static_world_drawables(self) -> None:
+        static_drawables: List[Tuple[float, int, object]] = []
+        for decoration in self.decorations:
+            static_drawables.append((decoration.position.y, 0, decoration))
+        for node in self.nodes:
+            static_drawables.append((node.position.y, 2, node))
+        static_drawables.sort(key=lambda item: (item[0], item[1]))
+        self._static_world_drawables = static_drawables
 
     def _random_world_position(self, margin: int = 120) -> Tuple[int, int]:
         margin = min(margin, max(10, WORLD_WIDTH // 4), max(10, WORLD_HEIGHT // 4))
@@ -3027,19 +3054,19 @@ class Game:
     def _draw_menu_title(self) -> None:
         ticks = pygame.time.get_ticks() / 1000.0
         bob = int(2 * pygame.math.Vector2(0, 1).rotate(ticks * 55).y)
-        title = "RUA MORTA"
-        shadow = self.title_font.render(title, True, (22, 24, 29))
-        accent = self.title_font.render(title, True, PALETTE["accent"])
-        text = self.title_font.render(title, True, PALETTE["text"])
+        shadow = self._menu_title_layers["shadow"]
+        accent = self._menu_title_layers["accent"]
+        text = self._menu_title_layers["text"]
         title_rect = text.get_rect(center=(WIDTH // 2, 70 + bob))
         self.screen.blit(shadow, title_rect.move(5, 5))
         self.screen.blit(accent, title_rect.move(-2, 2))
         self.screen.blit(text, title_rect)
-        if int(ticks * 4) % 9 == 0:
-            glitch = self.title_font.render(title, True, PALETTE["danger"])
-            self.screen.blit(glitch, title_rect.move(3, -2), special_flags=pygame.BLEND_RGBA_ADD)
+        if int(ticks * 5) % 11 == 0:
+            glitch = self._menu_title_layers["glitch"]
+            self.screen.blit(glitch, title_rect.move(2, -1))
+            self.screen.blit(glitch, title_rect.move(-2, 1))
 
-        subtitle = self.small_font.render("SOBREVIVENCIA ZUMBI", True, PALETTE["text_soft"])
+        subtitle = self._menu_title_layers["subtitle"]
         self.screen.blit(subtitle, subtitle.get_rect(center=(WIDTH // 2, 118)))
 
     def _draw_menu_panel(self, rect: pygame.Rect) -> None:
@@ -3287,29 +3314,46 @@ class Game:
             return
 
         max_push = ZOMBIE_SEPARATION_STRENGTH * dt
+        bucket_size = ZOMBIE_SEPARATION_BUCKET_SIZE
         for _ in range(ZOMBIE_SEPARATION_ITERATIONS):
+            buckets: Dict[Tuple[int, int], List[int]] = {}
             for index, zombie in enumerate(living_zombies):
-                for other in living_zombies[index + 1:]:
-                    offset = zombie.position - other.position
-                    distance_sq = offset.length_squared()
-                    min_distance = zombie.radius + other.radius + 10
-                    if distance_sq <= 0.01:
-                        offset = pygame.Vector2(random.uniform(-1.0, 1.0), random.uniform(-1.0, 1.0))
-                        if offset.length_squared() <= 0.01:
-                            offset = pygame.Vector2(1, 0)
-                        distance_sq = offset.length_squared()
-                    if distance_sq >= min_distance * min_distance:
-                        continue
+                bucket_key = (int(zombie.position.x) // bucket_size, int(zombie.position.y) // bucket_size)
+                buckets.setdefault(bucket_key, []).append(index)
 
-                    distance = distance_sq ** 0.5
-                    direction = offset / distance
-                    push = min(max_push, (min_distance - distance) * 0.5)
-                    zombie.position += direction * push
-                    other.position -= direction * push
-                    if self._position_hits_obstacle(zombie.position, zombie.radius):
-                        zombie.position = self._push_entity_out_of_obstacles(zombie.position, zombie.radius)
-                    if self._position_hits_obstacle(other.position, other.radius):
-                        other.position = self._push_entity_out_of_obstacles(other.position, other.radius)
+            for bucket_key, indices in buckets.items():
+                bucket_x, bucket_y = bucket_key
+                nearby_indices: List[int] = []
+                for offset_y in (-1, 0, 1):
+                    for offset_x in (-1, 0, 1):
+                        nearby_indices.extend(buckets.get((bucket_x + offset_x, bucket_y + offset_y), ()))
+
+                for index in indices:
+                    zombie = living_zombies[index]
+                    for other_index in nearby_indices:
+                        if other_index <= index:
+                            continue
+                        other = living_zombies[other_index]
+                        offset = zombie.position - other.position
+                        distance_sq = offset.length_squared()
+                        min_distance = zombie.radius + other.radius + 10
+                        if distance_sq <= 0.01:
+                            offset = pygame.Vector2(random.uniform(-1.0, 1.0), random.uniform(-1.0, 1.0))
+                            if offset.length_squared() <= 0.01:
+                                offset = pygame.Vector2(1, 0)
+                            distance_sq = offset.length_squared()
+                        if distance_sq >= min_distance * min_distance:
+                            continue
+
+                        distance = distance_sq ** 0.5
+                        direction = offset / distance
+                        push = min(max_push, (min_distance - distance) * 0.5)
+                        zombie.position += direction * push
+                        other.position -= direction * push
+                        if self._position_hits_obstacle(zombie.position, zombie.radius):
+                            zombie.position = self._push_entity_out_of_obstacles(zombie.position, zombie.radius)
+                        if self._position_hits_obstacle(other.position, other.radius):
+                            other.position = self._push_entity_out_of_obstacles(other.position, other.radius)
 
     def render(self, dt: float) -> None:
         self._update_camera()
@@ -3330,20 +3374,31 @@ class Game:
     def _draw_world_scene(self) -> None:
         self._draw_ground()
 
-        world_drawables: List[Tuple[float, int, object]] = []
-        for decoration in self.decorations:
-            world_drawables.append((decoration.position.y, 0, decoration))
-        for node in self.nodes:
-            world_drawables.append((node.position.y, 2, node))
+        dynamic_drawables: List[Tuple[float, int, object]] = []
         for zombie in self.zombies:
-            world_drawables.append((zombie.position.y, 3, zombie))
+            dynamic_drawables.append((zombie.position.y, 3, zombie))
         for projectile in self.axe_projectiles:
-            world_drawables.append((projectile.position.y, 5, projectile))
+            dynamic_drawables.append((projectile.position.y, 5, projectile))
         for impact in self.shot_impacts:
-            world_drawables.append((impact.position.y, 5, impact))
-        world_drawables.append((self.player.player_position[1], 4, self.player))
+            dynamic_drawables.append((impact.position.y, 5, impact))
+        dynamic_drawables.append((self.player.player_position[1], 4, self.player))
+        dynamic_drawables.sort(key=lambda item: (item[0], item[1]))
 
-        for _, _, drawable in sorted(world_drawables, key=lambda item: (item[0], item[1])):
+        static_index = 0
+        dynamic_index = 0
+        while static_index < len(self._static_world_drawables) and dynamic_index < len(dynamic_drawables):
+            static_item = self._static_world_drawables[static_index]
+            dynamic_item = dynamic_drawables[dynamic_index]
+            if (static_item[0], static_item[1]) <= (dynamic_item[0], dynamic_item[1]):
+                static_item[2].draw(self.screen, self._camera)
+                static_index += 1
+            else:
+                dynamic_item[2].draw(self.screen, self._camera)
+                dynamic_index += 1
+
+        for _, _, drawable in self._static_world_drawables[static_index:]:
+            drawable.draw(self.screen, self._camera)
+        for _, _, drawable in dynamic_drawables[dynamic_index:]:
             drawable.draw(self.screen, self._camera)
 
         for popup in self._floating_popups:
@@ -3432,7 +3487,8 @@ class Game:
         if self.player.hit_flash_timer <= 0 and self.player.heal_flash_timer <= 0:
             return
 
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay = self._damage_overlay
+        overlay.fill((0, 0, 0, 0))
         if self.player.hit_flash_timer > 0:
             alpha = int(120 * (self.player.hit_flash_timer / 0.22))
             overlay.fill((*PALETTE["danger"], alpha))
