@@ -10,7 +10,6 @@ RGM 32237740
 ## Jogar
 
 - Online: https://gustavo-abreu-ribeiro.github.io/Jogo-Python/
-- APK Android gerado pelo Pygbag: https://gustavo-abreu-ribeiro.github.io/Jogo-Python/jogo-python.apk
 - Pacote web: https://gustavo-abreu-ribeiro.github.io/Jogo-Python/jogo-python.tar.gz
 
 ## Estado Atual
