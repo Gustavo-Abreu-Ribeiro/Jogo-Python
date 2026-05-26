@@ -1,6 +1,11 @@
 # Dead Streets
 
-Dead Streets e um jogo 2D de sobrevivencia feito em Python com Pygame. O projeto roda como aplicativo desktop e tambem pode ser empacotado para navegador com Pygbag/WebAssembly.
+Dead Streets é um jogo 2D de sobrevivencia feito em Python com Pygame. O projeto roda como aplicativo desktop e tambem pode ser empacotado para navegador com Pygbag/WebAssembly.
+
+O projeto foi para a matéria programação de computadores na UDF ministrada pela professora Karla Roberto Sartin
+
+Aluno: Gustavo Emanuel Abreu Ribeiro
+RGM 32237740
 
 ## Jogar
 
@@ -10,17 +15,17 @@ Dead Streets e um jogo 2D de sobrevivencia feito em Python com Pygame. O projeto
 
 ## Estado Atual
 
-O jogo usa mapas criados no Tiled (`.tmj`) com tilesets externos (`.tsx`), sprites em pixel art, audio OGG e um loop de exploracao, combate, inventario, crafting e transicoes entre areas. A camera segue o jogador em mapas maiores que a tela, com colisao por camadas do mapa e pontos interativos derivados das layers do Tiled.
+O jogo usa mapas criados no Tiled (`.tmj`) com tilesets externos (`.tsx`), sprites em pixel art, audio OGG e um loop de exploracao, combate, inventario, crafting e transições entre areas. A camera segue o jogador em mapas, com colisão por camadas do mapa e pontos interativos derivados das layers do Tiled.
 
 Sistemas implementados:
 
 - Movimento com teclado, mouse e controle.
 - Vida, fome, stamina e morte.
 - Inventario com atalhos rapidos, consumiveis e armas.
-- Crafting por receitas em estacoes de trabalho.
-- Loot em pontos de busca, corpos e areas do mapa.
+- Crafting por receitas em estações de trabalho.
+- Loot em pontos de busca, corpos e áreas do mapa.
 - Armas corpo a corpo, armas de fogo e tipos especiais de municao.
-- Zumbis com variantes, animacoes, colisao, separacao e comportamento de ataque.
+- Zumbis com variantes, animações, colisão, separação e comportamento de ataque.
 - Mapas normais, interiores, arenas e teleporte entre areas.
 - Musica e efeitos sonoros com volume configuravel.
 - Save em arquivo no desktop e `localStorage` no navegador.
