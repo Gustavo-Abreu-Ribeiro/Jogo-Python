@@ -580,6 +580,8 @@ class Zombie:
         sprite_rect = sprite.get_rect(
             midbottom=(round(draw_pos.x), round(draw_pos.y + self.radius + 6))
         )
+        if not surface.get_rect().colliderect(sprite_rect.inflate(70, 70)):
+            return
         shadow_surface = self._shadow_surface(
             (
                 max(12, int(sprite_rect.width * 0.52)),

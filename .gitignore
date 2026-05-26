@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+
+build/
+.pygbag-cache/
+
+savegame.json
+settings.json
+
+.venv/
+venv/
+*.log
