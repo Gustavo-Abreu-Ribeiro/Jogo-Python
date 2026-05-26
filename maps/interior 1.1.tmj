@@ -87,15 +87,15 @@
  "tilesets":[
         {
          "firstgid":1,
-         "source":"Sprites\/Ground_Green.tsx"
+         "source":"tilesets\/Ground_Green.tsx"
         }, 
         {
          "firstgid":409,
-         "source":"Sprites\/Predio_Escuro.tsx"
+         "source":"tilesets\/Predio_Escuro.tsx"
         }, 
         {
          "firstgid":578,
-         "source":"Sprites\/Objetos.tsx"
+         "source":"tilesets\/Objetos.tsx"
         }],
  "tilewidth":16,
  "type":"map",

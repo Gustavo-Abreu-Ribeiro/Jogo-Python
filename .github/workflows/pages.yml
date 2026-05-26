@@ -43,11 +43,14 @@ jobs:
               echo "::error file=$file::Missing browser audio file: $ogg"
               missing=1
             fi
-          done < <(find musics -type f \( -name '*.wav' -o -name '*.mp3' \) -print0)
+          done < <(find audio -type f \( -name '*.wav' -o -name '*.mp3' \) -print0)
           exit "$missing"
 
       - name: Build Pygbag package
         run: python -m pygbag --build .
+
+      - name: Polish web shell
+        run: python tools/patch_web_build.py
 
       - name: Prepare GitHub Pages artifact
         run: touch build/web/.nojekyll

@@ -298,27 +298,27 @@
  "tilesets":[
         {
          "firstgid":1,
-         "source":"Sprites\/Ground_Bleak_Yellow.tsx"
+         "source":"tilesets\/Ground_Bleak_Yellow.tsx"
         }, 
         {
          "firstgid":409,
-         "source":"Sprites\/Predio_Cinza.tsx"
+         "source":"tilesets\/Predio_Cinza.tsx"
         }, 
         {
          "firstgid":578,
-         "source":"Sprites\/Natureza.tsx"
+         "source":"tilesets\/Natureza.tsx"
         }, 
         {
          "firstgid":801,
-         "source":"Sprites\/Veiculos.tsx"
+         "source":"tilesets\/Veiculos.tsx"
         }, 
         {
          "firstgid":1047,
-         "source":"Sprites\/Objetos.tsx"
+         "source":"tilesets\/Objetos.tsx"
         }, 
         {
          "firstgid":1258,
-         "source":"Sprites\/Ground_Dark_Green.tsx"
+         "source":"tilesets\/Ground_Dark_Green.tsx"
         }],
  "tilewidth":16,
  "type":"map",

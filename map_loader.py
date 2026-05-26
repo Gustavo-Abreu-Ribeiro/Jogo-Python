@@ -160,7 +160,7 @@ class TiledMap:
         if tsx_path.exists():
             return tsx_path
 
-        fallback = PROJECT_ROOT / "sprites" / "Sprites" / Path(source).name
+        fallback = PROJECT_ROOT / "maps" / "tilesets" / Path(source).name
         if fallback.exists():
             return fallback.resolve()
         return tsx_path
@@ -175,7 +175,7 @@ class TiledMap:
         normalized_source = source.replace("\\", "/")
         if marker in normalized_source:
             relative_asset = normalized_source.split(marker, 1)[1]
-            fallback = PROJECT_ROOT / "web_assets" / "PostApocalypse_AssetPack_v1.1.2" / relative_asset
+            fallback = PROJECT_ROOT / "sprites" / "post_apocalypse" / relative_asset
             if fallback.exists():
                 return fallback.resolve()
 

@@ -175,35 +175,35 @@
  "tilesets":[
         {
          "firstgid":1,
-         "source":"Sprites\/Ground_Dark_Green.tsx"
+         "source":"tilesets\/Ground_Dark_Green.tsx"
         }, 
         {
          "firstgid":409,
-         "source":"Sprites\/Natureza.tsx"
+         "source":"tilesets\/Natureza.tsx"
         }, 
         {
          "firstgid":632,
-         "source":"Sprites\/Brick_Wall.tsx"
+         "source":"tilesets\/Brick_Wall.tsx"
         }, 
         {
          "firstgid":650,
-         "source":"Sprites\/WireFence.tsx"
+         "source":"tilesets\/WireFence.tsx"
         }, 
         {
          "firstgid":665,
-         "source":"Sprites\/Iron_Fence.tsx"
+         "source":"tilesets\/Iron_Fence.tsx"
         }, 
         {
          "firstgid":677,
-         "source":"Sprites\/Lixo.tsx"
+         "source":"tilesets\/Lixo.tsx"
         }, 
         {
          "firstgid":709,
-         "source":"Sprites\/gutter.tsx"
+         "source":"tilesets\/gutter.tsx"
         }, 
         {
          "firstgid":793,
-         "source":"Sprites\/Objetos.tsx"
+         "source":"tilesets\/Objetos.tsx"
         }],
  "tilewidth":16,
  "type":"map",

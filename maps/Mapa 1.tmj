@@ -347,47 +347,47 @@
  "tilesets":[
         {
          "firstgid":1,
-         "source":"Sprites\/Ground_Dark_Green.tsx"
+         "source":"tilesets\/Ground_Dark_Green.tsx"
         }, 
         {
          "firstgid":409,
-         "source":"Sprites\/Predio_Escuro.tsx"
+         "source":"tilesets\/Predio_Escuro.tsx"
         }, 
         {
          "firstgid":578,
-         "source":"Sprites\/Ground_Green.tsx"
+         "source":"tilesets\/Ground_Green.tsx"
         }, 
         {
          "firstgid":986,
-         "source":"Sprites\/Predio_Branco.tsx"
+         "source":"tilesets\/Predio_Branco.tsx"
         }, 
         {
          "firstgid":1155,
-         "source":"Sprites\/Objetos.tsx"
+         "source":"tilesets\/Objetos.tsx"
         }, 
         {
          "firstgid":1366,
-         "source":"Sprites\/Telhado.tsx"
+         "source":"tilesets\/Telhado.tsx"
         }, 
         {
          "firstgid":1446,
-         "source":"Sprites\/Predio_Cinza.tsx"
+         "source":"tilesets\/Predio_Cinza.tsx"
         }, 
         {
          "firstgid":1615,
-         "source":"Sprites\/Natureza.tsx"
+         "source":"tilesets\/Natureza.tsx"
         }, 
         {
          "firstgid":1838,
-         "source":"Sprites\/grass.tsx"
+         "source":"tilesets\/grass.tsx"
         }, 
         {
          "firstgid":1886,
-         "source":"Sprites\/Veiculos.tsx"
+         "source":"tilesets\/Veiculos.tsx"
         }, 
         {
          "firstgid":2132,
-         "source":"Sprites\/Predio_Bege.tsx"
+         "source":"tilesets\/Predio_Bege.tsx"
         }],
  "tilewidth":16,
  "type":"map",

@@ -298,55 +298,55 @@
  "tilesets":[
         {
          "firstgid":1,
-         "source":"Sprites\/Ground_Dark_Green.tsx"
+         "source":"tilesets\/Ground_Dark_Green.tsx"
         }, 
         {
          "firstgid":409,
-         "source":"Sprites\/Brick_Wall.tsx"
+         "source":"tilesets\/Brick_Wall.tsx"
         }, 
         {
          "firstgid":427,
-         "source":"Sprites\/Ground_Bleak_Yellow.tsx"
+         "source":"tilesets\/Ground_Bleak_Yellow.tsx"
         }, 
         {
          "firstgid":835,
-         "source":"Sprites\/Veiculos.tsx"
+         "source":"tilesets\/Veiculos.tsx"
         }, 
         {
          "firstgid":1081,
-         "source":"Sprites\/Natureza.tsx"
+         "source":"tilesets\/Natureza.tsx"
         }, 
         {
          "firstgid":1304,
-         "source":"Sprites\/Objetos.tsx"
+         "source":"tilesets\/Objetos.tsx"
         }, 
         {
          "firstgid":1515,
-         "source":"Sprites\/Predio_Escuro.tsx"
+         "source":"tilesets\/Predio_Escuro.tsx"
         }, 
         {
          "firstgid":1684,
-         "source":"Sprites\/grass.tsx"
+         "source":"tilesets\/grass.tsx"
         }, 
         {
          "firstgid":1732,
-         "source":"Sprites\/WireFence.tsx"
+         "source":"tilesets\/WireFence.tsx"
         }, 
         {
          "firstgid":1747,
-         "source":"Sprites\/Lixo.tsx"
+         "source":"tilesets\/Lixo.tsx"
         }, 
         {
          "firstgid":1779,
-         "source":"Sprites\/Ground_Green.tsx"
+         "source":"tilesets\/Ground_Green.tsx"
         }, 
         {
          "firstgid":2187,
-         "source":"Sprites\/Iron_Fence.tsx"
+         "source":"tilesets\/Iron_Fence.tsx"
         }, 
         {
          "firstgid":2199,
-         "source":"Sprites\/Predio_Cinza.tsx"
+         "source":"tilesets\/Predio_Cinza.tsx"
         }],
  "tilewidth":16,
  "type":"map",

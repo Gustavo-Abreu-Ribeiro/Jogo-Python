@@ -22,15 +22,15 @@ from weapons import WEAPONS, WEAPON_FAMILIES, WEAPON_ITEMS
 from zombie import Zombie
 
 
+IS_WEB = sys.platform == "emscripten"
 WIDTH, HEIGHT = 960, 540
-WINDOW_WIDTH, WINDOW_HEIGHT = 1600, 900
-TARGET_FPS = 60
+WINDOW_WIDTH, WINDOW_HEIGHT = (WIDTH, HEIGHT) if IS_WEB else (1600, 900)
+TARGET_FPS = 45 if IS_WEB else 60
 COLLISION_BUCKET_SIZE = 128
 WORLD_WIDTH, WORLD_HEIGHT = 2200, 1400
 PROJECT_ROOT = Path(__file__).resolve().parent
 GAME_TITLE = "Dead Streets"
 GAME_SUBTITLE = "ZOMBIE SURVIVAL"
-IS_WEB = sys.platform == "emscripten"
 LOCAL_MAP_ROOT = PROJECT_ROOT / "maps"
 MAP_ROOT = LOCAL_MAP_ROOT if LOCAL_MAP_ROOT.exists() else PROJECT_ROOT.parent
 
@@ -77,13 +77,12 @@ TILED_MAP_PATH = MAP_SEQUENCE[0]
 INFINITE_AMMO_CHEAT_CODE = "150328"
 SAVE_GAME_PATH = PROJECT_ROOT / "savegame.json"
 SETTINGS_PATH = PROJECT_ROOT / "settings.json"
-MUSIC_ROOT = PROJECT_ROOT / "musics"
-TITLE_MUSIC_PATH = MUSIC_ROOT / "Menu_Music.mp3"
-GAME_MUSIC_PATH = MUSIC_ROOT / "Loop_Music.mp3"
-BOSS_MUSIC_PATH = MUSIC_ROOT / "Boss_Fight.mp3"
-GAME_MUSIC_GAIN = 3.0
-GAME_MUSIC_LAYER_COUNT = 2
-SFX_ROOT = MUSIC_ROOT / "Sound Effects"
+AUDIO_ROOT = PROJECT_ROOT / "audio"
+TITLE_MUSIC_PATH = AUDIO_ROOT / "Menu_Music.ogg"
+GAME_MUSIC_PATH = AUDIO_ROOT / "Loop_Music.ogg"
+BOSS_MUSIC_PATH = AUDIO_ROOT / "Boss_Fight.ogg"
+GAME_MUSIC_GAIN = 1.0
+SFX_ROOT = AUDIO_ROOT / "sfx"
 SFX_GAIN = 1.25
 WEB_SETTINGS_KEY = "rua_morta_settings"
 TILED_MAP_SCALE = 2
@@ -132,33 +131,33 @@ GAMEPAD_RESCAN_INTERVAL_MS = 600
 GAMEPAD_DISCONNECT_GRACE_MS = 1400
 
 SFX_FILES = {
-    "craft_success": "craft_success.wav",
-    "door_locked": "door_locked.wav",
-    "door_open": "door_open.wav",
-    "eat": "eat.wav",
-    "gun_empty": "gun_empty_click.wav",
-    "pistol": "gun_pistol_shot.wav",
-    "shotgun": "gun_shotgun_shot.wav",
-    "heal": "heal.wav",
-    "hit_flesh": "hit_flesh.wav",
-    "inventory_move": "inventory_move_item.wav",
-    "melee": "melee_punch.wav",
-    "objective": "objective_update.wav",
-    "pickup_ammo": "pickup_ammo.wav",
-    "pickup_item": "pickup_item.wav",
-    "player_damage": "player_damage.wav",
-    "search_car": "search_car.wav",
-    "search_tree": "search_tree.wav",
-    "ui_confirm": "ui_click_confirm.wav",
-    "ui_denied": "ui_denied.wav",
-    "ui_close": "ui_menu_close.wav",
-    "ui_move": "ui_menu_move.wav",
-    "ui_open": "ui_menu_open.wav",
-    "zombie_alert": "zombie_alert.wav",
-    "zombie_big_attack": "zombie_big_attack.wav",
-    "zombie_death": "zombie_death.wav",
-    "zombie_normal_attack": "zombie_normal_attack.wav",
-    "zombie_small_dash": "zombie_small_dash.wav",
+    "craft_success": "craft_success.ogg",
+    "door_locked": "door_locked.ogg",
+    "door_open": "door_open.ogg",
+    "eat": "eat.ogg",
+    "gun_empty": "gun_empty_click.ogg",
+    "pistol": "gun_pistol_shot.ogg",
+    "shotgun": "gun_shotgun_shot.ogg",
+    "heal": "heal.ogg",
+    "hit_flesh": "hit_flesh.ogg",
+    "inventory_move": "inventory_move_item.ogg",
+    "melee": "melee_punch.ogg",
+    "objective": "objective_update.ogg",
+    "pickup_ammo": "pickup_ammo.ogg",
+    "pickup_item": "pickup_item.ogg",
+    "player_damage": "player_damage.ogg",
+    "search_car": "search_car.ogg",
+    "search_tree": "search_tree.ogg",
+    "ui_confirm": "ui_click_confirm.ogg",
+    "ui_denied": "ui_denied.ogg",
+    "ui_close": "ui_menu_close.ogg",
+    "ui_move": "ui_menu_move.ogg",
+    "ui_open": "ui_menu_open.ogg",
+    "zombie_alert": "zombie_alert.ogg",
+    "zombie_big_attack": "zombie_big_attack.ogg",
+    "zombie_death": "zombie_death.ogg",
+    "zombie_normal_attack": "zombie_normal_attack.ogg",
+    "zombie_small_dash": "zombie_small_dash.ogg",
 }
 
 
@@ -269,10 +268,10 @@ NODE_TYPES: Dict[str, Dict[str, object]] = {
     },
 }
 
-OBJECT_SPRITE_ROOT = Path(__file__).resolve().parent / "sprites" / "objects"
+OBJECT_SPRITE_ROOT = Path(__file__).resolve().parent / "sprites" / "Objects"
 SHOT_SPRITE_ROOT = Path(__file__).resolve().parent / "sprites" / "Shot"
 AXE_SPRITE_ROOT = PROJECT_ROOT / "sprites" / "Zombie_Axe" / "Axe"
-UI_SPRITE_ROOT = PROJECT_ROOT / "UIMENU"
+UI_SPRITE_ROOT = PROJECT_ROOT / "sprites" / "ui"
 _RAW_SPRITE_CACHE: Dict[str, pygame.Surface] = {}
 _SCALED_SPRITE_CACHE: Dict[Tuple[str, float], pygame.Surface] = {}
 _COMPOSITE_SPRITE_CACHE: Dict[Tuple[str, str, str, str, float], pygame.Surface] = {}
@@ -772,6 +771,8 @@ class Decoration:
         sprite_rect = self.sprite.get_rect(
             midbottom=(round(draw_pos.x), round(draw_pos.y + self._ground_offset))
         )
+        if not surface.get_rect().colliderect(sprite_rect.inflate(80, 80)):
+            return
         shadow_rect = self._shadow.get_rect(center=(sprite_rect.centerx + 3, sprite_rect.bottom - 4))
         surface.blit(self._shadow, shadow_rect)
         surface.blit(self.sprite, sprite_rect)
@@ -834,6 +835,8 @@ class SearchNode:
         draw_pos = self.position - camera_offset
         sprite = self._searched_sprite if self.searched else self._sprite
         sprite_rect = sprite.get_rect(midbottom=(round(draw_pos.x), round(draw_pos.y + 8)))
+        if not surface.get_rect().colliderect(sprite_rect.inflate(60, 60)):
+            return
         shadow = self._shadow
         if shadow is None:
             return
@@ -1007,8 +1010,6 @@ class Game:
     def __init__(self) -> None:
         self._audio_enabled = True
         self._current_music: Path | None = None
-        self._game_music_sound: pygame.mixer.Sound | None = None
-        self._game_music_channels: List[pygame.mixer.Channel] = []
         try:
             pygame.mixer.pre_init(44100, -16, 2, 512)
         except pygame.error:
@@ -1285,8 +1286,6 @@ class Game:
             return
         try:
             pygame.mixer.music.set_volume(self._music_volume(self._current_music))
-            for channel in self._game_music_channels:
-                channel.set_volume(self._music_volume(GAME_MUSIC_PATH))
             for sound in self._sounds.values():
                 sound.set_volume(self._sfx_volume())
         except pygame.error:
@@ -1320,15 +1319,11 @@ class Game:
         if not resolved_music_path.exists():
             self._set_menu_message(f"Musica nao encontrada: {resolved_music_path.name}")
             return
-        if music_path == GAME_MUSIC_PATH:
-            self._play_boosted_game_music()
-            return
         if pygame.mixer.get_init() is None:
             self._set_menu_message("Audio do pygame indisponivel.")
             return
 
         try:
-            self._stop_boosted_game_music()
             pygame.mixer.music.load(str(resolved_music_path))
             pygame.mixer.music.set_volume(self._music_volume(music_path))
             pygame.mixer.music.play(-1)
@@ -1338,41 +1333,6 @@ class Game:
             return
 
         self._current_music = music_path
-
-    def _play_boosted_game_music(self) -> None:
-        if pygame.mixer.get_init() is None:
-            self._set_menu_message("Audio do pygame indisponivel.")
-            return
-        try:
-            game_music_path = _web_audio_path(GAME_MUSIC_PATH)
-            if not game_music_path.exists():
-                self._set_menu_message(f"Musica nao encontrada: {game_music_path.name}")
-                return
-            if self._game_music_sound is None:
-                self._game_music_sound = pygame.mixer.Sound(str(game_music_path))
-            pygame.mixer.music.stop()
-            self._stop_boosted_game_music()
-            self._game_music_channels = [
-                channel
-                for channel in (
-                    self._game_music_sound.play(loops=-1)
-                    for _ in range(GAME_MUSIC_LAYER_COUNT)
-                )
-                if channel is not None
-            ]
-            for channel in self._game_music_channels:
-                channel.set_volume(self._music_volume(GAME_MUSIC_PATH))
-        except pygame.error:
-            self._audio_enabled = False
-            self._set_menu_message(f"Musica nao suportada: {GAME_MUSIC_PATH.name}")
-            return
-
-        self._current_music = GAME_MUSIC_PATH
-
-    def _stop_boosted_game_music(self) -> None:
-        for channel in self._game_music_channels:
-            channel.stop()
-        self._game_music_channels = []
 
     def _play_title_music(self) -> None:
         self._play_music(TITLE_MUSIC_PATH)

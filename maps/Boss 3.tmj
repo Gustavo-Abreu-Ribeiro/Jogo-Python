@@ -175,19 +175,19 @@
  "tilesets":[
         {
          "firstgid":1,
-         "source":"Sprites\/Ground_Green.tsx"
+         "source":"tilesets\/Ground_Green.tsx"
         }, 
         {
          "firstgid":409,
-         "source":"Sprites\/Objetos.tsx"
+         "source":"tilesets\/Objetos.tsx"
         }, 
         {
          "firstgid":620,
-         "source":"Sprites\/Natureza.tsx"
+         "source":"tilesets\/Natureza.tsx"
         }, 
         {
          "firstgid":843,
-         "source":"Sprites\/Veiculos.tsx"
+         "source":"tilesets\/Veiculos.tsx"
         }],
  "tilewidth":16,
  "type":"map",
