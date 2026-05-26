@@ -33,23 +33,48 @@ GAME_SUBTITLE = "ZOMBIE SURVIVAL"
 IS_WEB = sys.platform == "emscripten"
 LOCAL_MAP_ROOT = PROJECT_ROOT / "maps"
 MAP_ROOT = LOCAL_MAP_ROOT if LOCAL_MAP_ROOT.exists() else PROJECT_ROOT.parent
-NORMAL_MAP_PATHS = [
-    MAP_ROOT / "Mapa 1.1.tmj",
-    MAP_ROOT / "Mapa 2.tmj",
-    MAP_ROOT / "Mapa 3.tmj",
-]
-BOSS_MAP_PATHS = [
-    MAP_ROOT / "Boss 1.tmj",
-    MAP_ROOT / "Boss 2.tmj",
-]
+
+
+def _resolve_tmj_groups(groups: List[Tuple[str, ...]], pattern: str) -> List[Path]:
+    paths: List[Path] = []
+    known_names = {name.lower() for group in groups for name in group}
+
+    for group in groups:
+        selected = next((MAP_ROOT / name for name in group if (MAP_ROOT / name).exists()), MAP_ROOT / group[0])
+        if selected.name.lower() not in {path.name.lower() for path in paths}:
+            paths.append(selected)
+
+    if MAP_ROOT.exists():
+        for path in sorted(MAP_ROOT.glob(pattern), key=lambda item: item.name.lower()):
+            if path.suffix.lower() == ".tmj" and path.name.lower() not in known_names:
+                paths.append(path)
+    return paths
+
+
+NORMAL_MAP_PATHS = _resolve_tmj_groups(
+    [
+        ("Mapa 1.tmj", "Mapa 1.1.tmj"),
+        ("Mapa 2.tmj",),
+        ("Mapa 3.tmj",),
+        ("Mapa 4.tmj",),
+    ],
+    "Mapa *.tmj",
+)
+BOSS_MAP_PATHS = _resolve_tmj_groups(
+    [
+        ("Boss 1.tmj",),
+        ("Boss 2.tmj",),
+        ("Boss 3.tmj",),
+    ],
+    "Boss *.tmj",
+)
+BOSS_SEQUENCE = ["boss 1.tmj", "boss 2.tmj", "summoner"]
 BOSS_MAP_PATH = BOSS_MAP_PATHS[0]
 MAP_SEQUENCE = NORMAL_MAP_PATHS
 MAPS_BEFORE_BOSS = 3
-INTERIOR_MAP_PATHS = [
-    MAP_ROOT / "interior 1.1.tmj",
-    MAP_ROOT / "Interior 1.tmj",
-]
+INTERIOR_MAP_PATHS = _resolve_tmj_groups([("Interior 1.tmj", "interior 1.1.tmj")], "Interior *.tmj")
 TILED_MAP_PATH = MAP_SEQUENCE[0]
+INFINITE_AMMO_CHEAT_CODE = "150328"
 SAVE_GAME_PATH = PROJECT_ROOT / "savegame.json"
 SETTINGS_PATH = PROJECT_ROOT / "settings.json"
 MUSIC_ROOT = PROJECT_ROOT / "musics"
@@ -252,6 +277,7 @@ _RAW_SPRITE_CACHE: Dict[str, pygame.Surface] = {}
 _SCALED_SPRITE_CACHE: Dict[Tuple[str, float], pygame.Surface] = {}
 _COMPOSITE_SPRITE_CACHE: Dict[Tuple[str, str, str, str, float], pygame.Surface] = {}
 _UI_SPRITE_CACHE: Dict[Tuple[str, int], pygame.Surface] = {}
+_TINTED_SPRITE_CACHE: Dict[Tuple[int, Tuple[int, int], Tuple[int, int, int], float], pygame.Surface] = {}
 _SHOT_IMPACT_CACHE: List[List[pygame.Surface]] | None = None
 _AXE_PROJECTILE_CACHE: Dict[tuple[str, float], List[pygame.Surface]] = {}
 _SHADOW_CACHE: Dict[Tuple[Tuple[int, int], int], pygame.Surface] = {}
@@ -342,8 +368,8 @@ ZOMBIE_VARIANTS: Dict[str, Dict[str, float | int]] = {
 }
 BOSS_ZOMBIE_STATS: Dict[str, Dict[str, object]] = {
     "boss 1.tmj": {
-        "name": "CHEFE",
-        "message": "O chefe apareceu. Derrote-o para liberar o teleporte.",
+        "name": "",
+        "message": "Derrote a criatura para liberar o teleporte.",
         "zombie_type": "big",
         "speed": 58.0,
         "health": 900,
@@ -354,9 +380,9 @@ BOSS_ZOMBIE_STATS: Dict[str, Dict[str, object]] = {
         "can_throw_axe": False,
     },
     "boss 2.tmj": {
-        "name": "CHEFE MACHADO",
-        "message": "O chefe do machado apareceu. A primeira metade e corpo a corpo.",
-        "phase_two_message": "Segunda fase! O chefe comecou a arremessar o machado.",
+        "name": "",
+        "message": "A criatura do machado apareceu. A primeira metade e corpo a corpo.",
+        "phase_two_message": "Segunda fase! Ela comecou a arremessar o machado.",
         "zombie_type": "axe",
         "speed": 42.0,
         "health": 1250,
@@ -365,6 +391,27 @@ BOSS_ZOMBIE_STATS: Dict[str, Dict[str, object]] = {
         "attack_damage": 32,
         "attack_range": 72.0,
         "can_throw_axe": False,
+    },
+    "summoner": {
+        "name": "",
+        "message": "Ela nao luta sozinha.",
+        "phase_two_message": "Segunda fase! Agora ela chama zumbis com machado.",
+        "zombie_type": "big",
+        "speed": 34.0,
+        "health": 1450,
+        "radius": 48,
+        "sprite_scale": 2.12,
+        "attack_damage": 0,
+        "attack_range": 0.0,
+        "can_throw_axe": False,
+        "summon_interval": 5.4,
+        "summon_count": 5,
+        "summon_max": 18,
+        "phase_two_summon_interval": 4.6,
+        "phase_two_small_count": 4,
+        "phase_two_axe_count": 2,
+        "phase_two_summon_max": 24,
+        "shield_reduction": 0.18,
     },
 }
 
@@ -581,12 +628,60 @@ def _dim_sprite(sprite: pygame.Surface) -> pygame.Surface:
     return dimmed
 
 
+def _desaturate_sprite(sprite: pygame.Surface, strength: float = 0.72) -> pygame.Surface:
+    desaturated = sprite.copy()
+    width, height = desaturated.get_size()
+    strength = max(0.0, min(1.0, strength))
+    desaturated.lock()
+    try:
+        for y in range(height):
+            for x in range(width):
+                r, g, b, a = desaturated.get_at((x, y))
+                if a <= 0:
+                    continue
+                gray = int(r * 0.3 + g * 0.59 + b * 0.11)
+                desaturated.set_at(
+                    (x, y),
+                    (
+                        int(r * (1.0 - strength) + gray * strength),
+                        int(g * (1.0 - strength) + gray * strength),
+                        int(b * (1.0 - strength) + gray * strength),
+                        a,
+                    ),
+                )
+    finally:
+        desaturated.unlock()
+    return desaturated
+
+
 def _tint_sprite(sprite: pygame.Surface, color: Tuple[int, int, int]) -> pygame.Surface:
+    strength = 0.18
+    cache_key = (id(sprite), sprite.get_size(), color, strength)
+    cached = _TINTED_SPRITE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     tinted = sprite.copy()
-    tinted.fill((188, 188, 188, 255), special_flags=pygame.BLEND_RGBA_MULT)
-    overlay = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
-    overlay.fill((*color, 72))
-    tinted.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+    width, height = tinted.get_size()
+    tinted.lock()
+    try:
+        for y in range(height):
+            for x in range(width):
+                r, g, b, a = tinted.get_at((x, y))
+                if a <= 0:
+                    continue
+                tinted.set_at(
+                    (x, y),
+                    (
+                        int(r * (1.0 - strength) + color[0] * strength),
+                        int(g * (1.0 - strength) + color[1] * strength),
+                        int(b * (1.0 - strength) + color[2] * strength),
+                        a,
+                    ),
+                )
+    finally:
+        tinted.unlock()
+    _TINTED_SPRITE_CACHE[cache_key] = tinted
     return tinted
 
 
@@ -989,9 +1084,12 @@ class Game:
         self._attack_timer = 0.0
         self._transition_cooldown = 0.0
         self._camera = pygame.Vector2()
+        self._cheat_buffer = ""
+        self._infinite_ammo = False
 
         self._recipe_names = self.crafting.get_recipe_names(self.inventory)
         self._selected_recipe_index = 0
+        self._crafting_scroll_index = 0
         self._base_position = pygame.Vector2(WORLD_WIDTH * 0.48, WORLD_HEIGHT * 0.52)
         self._current_map_index = 0
         self._current_map_path = self._first_existing_path(MAP_SEQUENCE, TILED_MAP_PATH)
@@ -999,9 +1097,14 @@ class Game:
         self._progress_level = 0
         self._bosses_defeated = 0
         self._boss_zombie: Zombie | None = None
+        self._extra_boss_zombies: List[Zombie] = []
         self._boss_defeated = False
         self._boss_phase_two_active = False
-        self._boss_name = "CHEFE"
+        self._boss_name = ""
+        self._current_boss_key = "boss 1.tmj"
+        self._summoner_timer = 0.0
+        self._summoner_minion_ids: set[int] = set()
+        self._stored_exterior_state: Dict[str, object] | None = None
         self._inside_interior = False
         self._return_map_path: Path | None = None
         self._return_map_index = 0
@@ -1009,6 +1112,8 @@ class Game:
         self._interior_exit: MapTrigger | None = None
         self._show_inventory = False
         self._show_crafting = False
+        self._show_tutorial = False
+        self._tutorial_page = 0
         self._quick_slots = ["maos", "taco", "pistola", "escopeta", "comida", "kit_medico"]
         self._selected_quick_slot = 0
 
@@ -1051,16 +1156,40 @@ class Game:
     def _available_boss_maps(self) -> List[Path]:
         return [path for path in BOSS_MAP_PATHS if path.exists()]
 
+    def _boss_loop_level(self) -> int:
+        available_keys = [key for key in BOSS_SEQUENCE if key in BOSS_ZOMBIE_STATS]
+        if not available_keys:
+            return 0
+        return max(0, self._bosses_defeated // len(available_keys))
+
+    def _next_boss_key(self) -> str | None:
+        available_keys = [key for key in BOSS_SEQUENCE if key in BOSS_ZOMBIE_STATS]
+        if not available_keys:
+            return None
+        return available_keys[self._bosses_defeated % len(available_keys)]
+
     def _next_boss_map_path(self) -> Path | None:
+        if self._next_boss_key() is None:
+            return None
         available_bosses = self._available_boss_maps()
         if not available_bosses:
             return None
-        boss_index = min(self._bosses_defeated, len(available_bosses) - 1)
-        return available_bosses[boss_index]
+        return random.choice(available_bosses)
 
     def _boss_stats_for_map(self, map_path: Path | None = None) -> Dict[str, object]:
+        if (
+            self._current_boss_key in BOSS_ZOMBIE_STATS
+            and (
+                map_path is None
+                or any(Path(map_path).name.lower() == boss_path.name.lower() for boss_path in BOSS_MAP_PATHS)
+            )
+        ):
+            return BOSS_ZOMBIE_STATS[self._current_boss_key]
         path = map_path or self._current_map_path
         return BOSS_ZOMBIE_STATS.get(path.name.lower(), BOSS_ZOMBIE_STATS["boss 1.tmj"])
+
+    def _is_summoner_boss_active(self) -> bool:
+        return self._is_boss_map_path() and self._current_boss_key == "summoner"
 
     def _choose_random_normal_map(self, exclude_current: bool = False) -> Path:
         available_maps = self._available_normal_maps()
@@ -1079,12 +1208,19 @@ class Game:
         return 0
 
     def _boss_is_alive(self) -> bool:
-        return (
-            self._is_boss_map_path()
-            and not self._boss_defeated
-            and self._boss_zombie is not None
-            and not self._boss_zombie.is_dying()
+        return self._is_boss_map_path() and not self._boss_defeated and any(
+            boss is not None and not boss.is_dying() for boss in self._boss_enemies()
         )
+
+    def _boss_enemies(self) -> List[Zombie]:
+        bosses: List[Zombie] = []
+        if self._boss_zombie is not None:
+            bosses.append(self._boss_zombie)
+        bosses.extend(boss for boss in self._extra_boss_zombies if boss is not None)
+        return bosses
+
+    def _is_boss_enemy(self, zombie: Zombie) -> bool:
+        return zombie is self._boss_zombie or any(zombie is boss for boss in self._extra_boss_zombies)
 
     def _is_horde_map(self) -> bool:
         return self._current_map_path.name.lower() == "mapa 3.tmj"
@@ -1271,15 +1407,22 @@ class Game:
         self._attack_timer = 0.0
         self._transition_cooldown = 0.0
         self._camera = pygame.Vector2()
-        self._current_map_path = self._first_existing_path([NORMAL_MAP_PATHS[0]], TILED_MAP_PATH)
+        self._cheat_buffer = ""
+        self._infinite_ammo = False
+        self._current_map_path = self._first_existing_path(NORMAL_MAP_PATHS, TILED_MAP_PATH)
         self._current_map_index = self._normal_map_index(self._current_map_path)
         self._normal_maps_completed = 0
         self._progress_level = 0
         self._bosses_defeated = 0
         self._boss_zombie = None
+        self._extra_boss_zombies = []
         self._boss_defeated = False
         self._boss_phase_two_active = False
-        self._boss_name = "CHEFE"
+        self._boss_name = ""
+        self._current_boss_key = "boss 1.tmj"
+        self._summoner_timer = 0.0
+        self._summoner_minion_ids = set()
+        self._stored_exterior_state = None
         self._inside_interior = False
         self._return_map_path = None
         self._return_map_index = 0
@@ -1287,9 +1430,12 @@ class Game:
         self._occupied_exit_triggers.clear()
         self._show_inventory = False
         self._show_crafting = False
+        self._show_tutorial = False
+        self._tutorial_page = 0
         self._selected_quick_slot = 0
         self._menu_selected_index = 0
         self._gamepad_aim_vector = pygame.Vector2()
+        self._crafting_scroll_index = 0
 
         self._generate_world()
         self.player.set_position(tuple(self._base_position))
@@ -1311,7 +1457,77 @@ class Game:
         self.tile_map = None
         self._interior_exit = None
         self._boss_zombie = None
+        self._extra_boss_zombies.clear()
         self._boss_phase_two_active = False
+        self._summoner_timer = 0.0
+        self._summoner_minion_ids.clear()
+
+    def _store_exterior_world_state(self) -> None:
+        self._stored_exterior_state = {
+            "nodes": list(self.nodes),
+            "zombies": list(self.zombies),
+            "shot_impacts": list(self.shot_impacts),
+            "axe_projectiles": list(self.axe_projectiles),
+            "floating_popups": list(self._floating_popups),
+            "decorations": list(self.decorations),
+            "static_world_drawables": list(self._static_world_drawables),
+            "doors": list(self.doors),
+            "exits": list(self.exits),
+            "occupied_exit_triggers": set(self._occupied_exit_triggers),
+            "collision_rects": list(self.collision_rects),
+            "collision_buckets": {key: list(value) for key, value in self._collision_buckets.items()},
+            "tile_map": self.tile_map,
+            "world_width": WORLD_WIDTH,
+            "world_height": WORLD_HEIGHT,
+            "current_map_path": self._current_map_path,
+            "current_map_index": self._current_map_index,
+            "base_position": self._base_position.copy(),
+            "boss_zombie": self._boss_zombie,
+            "extra_boss_zombies": list(self._extra_boss_zombies),
+            "boss_defeated": self._boss_defeated,
+            "boss_phase_two_active": self._boss_phase_two_active,
+            "boss_name": self._boss_name,
+            "summoner_timer": self._summoner_timer,
+            "summoner_minion_ids": set(self._summoner_minion_ids),
+        }
+
+    def _restore_exterior_world_state(self) -> bool:
+        if self._stored_exterior_state is None:
+            return False
+
+        global WORLD_WIDTH, WORLD_HEIGHT
+        state = self._stored_exterior_state
+        self.nodes = list(state["nodes"])
+        self.zombies = list(state["zombies"])
+        self.shot_impacts = list(state["shot_impacts"])
+        self.axe_projectiles = list(state["axe_projectiles"])
+        self._floating_popups = list(state["floating_popups"])
+        self.decorations = list(state["decorations"])
+        self._static_world_drawables = list(state["static_world_drawables"])
+        self.doors = list(state["doors"])
+        self.exits = list(state["exits"])
+        self._occupied_exit_triggers = set(state["occupied_exit_triggers"])
+        self.collision_rects = list(state["collision_rects"])
+        self._collision_buckets = {
+            key: list(value) for key, value in dict(state["collision_buckets"]).items()
+        }
+        self.tile_map = state["tile_map"]
+        WORLD_WIDTH = int(state["world_width"])
+        WORLD_HEIGHT = int(state["world_height"])
+        self._current_map_path = Path(state["current_map_path"])
+        self._current_map_index = int(state["current_map_index"])
+        self._base_position = pygame.Vector2(state["base_position"])
+        self._boss_zombie = state["boss_zombie"]
+        self._extra_boss_zombies = list(state.get("extra_boss_zombies", []))
+        self._boss_defeated = bool(state["boss_defeated"])
+        self._boss_phase_two_active = bool(state["boss_phase_two_active"])
+        self._boss_name = str(state["boss_name"])
+        self._summoner_timer = float(state["summoner_timer"])
+        self._summoner_minion_ids = set(state["summoner_minion_ids"])
+        self._inside_interior = False
+        self._interior_exit = None
+        self._stored_exterior_state = None
+        return True
 
     def _set_collision_rects(self, rects: List[pygame.Rect]) -> None:
         self.collision_rects = list(rects)
@@ -1472,10 +1688,13 @@ class Game:
         self._return_map_path = self._current_map_path
         self._return_map_index = self._current_map_index
         self._return_position = self._find_open_position_near(door.position + pygame.Vector2(0, 78))
+        self._store_exterior_world_state()
         interior_path = random.choice(interior_paths)
         if self._switch_to_tiled_map(interior_path, inside_interior=True):
             self._play_sfx("door_open")
             self._set_message("Voce entrou no predio.")
+        else:
+            self._stored_exterior_state = None
 
     def _leave_interior(self) -> None:
         if self._return_map_path is None or self._return_position is None:
@@ -1486,6 +1705,20 @@ class Game:
         return_path = self._return_map_path
         return_index = self._return_map_index
         return_position = self._return_position.copy()
+        if self._restore_exterior_world_state():
+            self._current_map_path = return_path
+            self._current_map_index = return_index
+            spawn = self._find_open_position_near(return_position)
+            self.player.set_position(tuple(spawn))
+            self._sync_exit_trigger_state()
+            self._transition_cooldown = 0.8
+            self._return_map_path = None
+            self._return_position = None
+            self._play_sfx("door_open")
+            self._play_active_music()
+            self._set_message("Voce saiu do predio.")
+            return
+
         if self._switch_to_tiled_map(
             return_path,
             inside_interior=False,
@@ -1516,8 +1749,11 @@ class Game:
 
             self._normal_maps_completed += 1
             self._progress_level += 1
+            next_boss_key = self._next_boss_key()
             next_boss_path = self._next_boss_map_path()
             if self._normal_maps_completed >= MAPS_BEFORE_BOSS and next_boss_path is not None:
+                if next_boss_key is not None:
+                    self._current_boss_key = next_boss_key
                 next_path = next_boss_path
                 next_index = -1
             else:
@@ -1899,7 +2135,11 @@ class Game:
         self._gamepad_attack_down = trigger_attack
         return direction, running, craft_pressed, search_pressed, attack_pressed, heal_pressed
 
-    def _spawn_zombie(self, near_position: Tuple[float, float] | pygame.Vector2 | None = None) -> None:
+    def _spawn_zombie(
+        self,
+        near_position: Tuple[float, float] | pygame.Vector2 | None = None,
+        forced_variant: str | None = None,
+    ) -> Zombie | None:
         if near_position is None:
             pos = pygame.Vector2(self._random_world_position())
             while pos.distance_to(pygame.Vector2(self.player.player_position)) < 260:
@@ -1908,12 +2148,15 @@ class Game:
             base = pygame.Vector2(near_position)
             pos = self._find_open_position_near(base + pygame.Vector2(random.randint(-120, 120), random.randint(-120, 120)))
 
-        variant_weights = self._zombie_variant_weights()
-        variant_name = random.choices(
-            list(variant_weights.keys()),
-            weights=list(variant_weights.values()),
-            k=1,
-        )[0]
+        if forced_variant in ZOMBIE_VARIANTS:
+            variant_name = str(forced_variant)
+        else:
+            variant_weights = self._zombie_variant_weights()
+            variant_name = random.choices(
+                list(variant_weights.keys()),
+                weights=list(variant_weights.values()),
+                k=1,
+            )[0]
         variant = ZOMBIE_VARIANTS[variant_name]
         progress_boost = min(1.0, self._progress_level * 0.08)
         base_speed = 48.0 + (self.difficulty_scale * 5.0)
@@ -1921,16 +2164,16 @@ class Game:
         speed = base_speed * float(variant["speed"])
         health = int(base_health * float(variant["health"]) * (0.82 + progress_boost))
         radius = int(variant["radius"])
-        self.zombies.append(
-            Zombie(
-                pos,
-                speed,
-                health=max(8, health),
-                radius=radius,
-                zombie_type=variant_name,
-                can_throw_axe=variant_name == "axe" and self._progress_level >= 2,
-            )
+        zombie = Zombie(
+            pos,
+            speed,
+            health=max(8, health),
+            radius=radius,
+            zombie_type=variant_name,
+            can_throw_axe=variant_name == "axe" and self._progress_level >= 2,
         )
+        self.zombies.append(zombie)
+        return zombie
 
     def _zombie_variant_weights(self) -> Dict[str, float]:
         if self._progress_level <= 0:
@@ -1943,26 +2186,84 @@ class Game:
 
     def _spawn_boss_zombie(self) -> None:
         stats = self._boss_stats_for_map()
+        loop_level = self._boss_loop_level()
+        speed_multiplier = 1.0 + min(0.5, loop_level * 0.1)
+        health_multiplier = 1.0 + min(1.6, loop_level * 0.32)
+        damage_multiplier = 1.0 + min(0.9, loop_level * 0.14)
+        if self._current_boss_key == "summoner" and loop_level == 0:
+            health_multiplier *= 0.9
+            speed_multiplier *= 0.94
         center = pygame.Vector2(WORLD_WIDTH * 0.5, WORLD_HEIGHT * 0.48)
         pos = self._find_open_position_near(center)
         if pos.distance_to(pygame.Vector2(self.player.player_position)) < 260:
             pos = self._find_open_position_near((WORLD_WIDTH * 0.5, WORLD_HEIGHT * 0.34))
         self._boss_name = str(stats.get("name", "CHEFE"))
         self._boss_phase_two_active = False
-        self._boss_zombie = Zombie(
+        self._summoner_timer = 1.2 if self._current_boss_key == "summoner" else 0.0
+        self._summoner_minion_ids.clear()
+        self._extra_boss_zombies.clear()
+        self._boss_zombie = self._create_boss_zombie(
             pos,
-            float(stats["speed"]) + self.difficulty_scale * 2.0,
-            health=int(stats["health"]) + int(self.difficulty_scale * 80),
+            stats,
+            speed_multiplier,
+            health_multiplier,
+            damage_multiplier,
+        )
+        self.zombies.append(self._boss_zombie)
+        self._spawn_loop_boss_partner(stats, loop_level, speed_multiplier, health_multiplier, damage_multiplier)
+        self._play_sfx("zombie_alert")
+        self._set_message(str(stats.get("message", "O chefe apareceu. Derrote-o para liberar o teleporte.")))
+
+    def _create_boss_zombie(
+        self,
+        pos: pygame.Vector2,
+        stats: Dict[str, object],
+        speed_multiplier: float,
+        health_multiplier: float,
+        damage_multiplier: float,
+    ) -> Zombie:
+        return Zombie(
+            pos,
+            (float(stats["speed"]) + self.difficulty_scale * 2.0) * speed_multiplier,
+            health=int((int(stats["health"]) + int(self.difficulty_scale * 80)) * health_multiplier),
             radius=int(stats["radius"]),
             zombie_type=str(stats["zombie_type"]),
             sprite_scale=float(stats["sprite_scale"]),
-            attack_damage=int(stats["attack_damage"]),
+            attack_damage=int(int(stats["attack_damage"]) * damage_multiplier),
             attack_range=float(stats["attack_range"]),
             can_throw_axe=bool(stats.get("can_throw_axe", False)),
         )
-        self.zombies.append(self._boss_zombie)
-        self._play_sfx("zombie_alert")
-        self._set_message(str(stats.get("message", "O chefe apareceu. Derrote-o para liberar o teleporte.")))
+
+    def _spawn_loop_boss_partner(
+        self,
+        stats: Dict[str, object],
+        loop_level: int,
+        speed_multiplier: float,
+        health_multiplier: float,
+        damage_multiplier: float,
+    ) -> None:
+        if loop_level <= 0 or self._current_boss_key not in {"boss 1.tmj", "boss 2.tmj"}:
+            return
+
+        partner_base = pygame.Vector2(WORLD_WIDTH * 0.5, WORLD_HEIGHT * 0.32)
+        if self._boss_zombie is not None and partner_base.distance_to(self._boss_zombie.position) < 170:
+            partner_base = pygame.Vector2(WORLD_WIDTH * 0.5, WORLD_HEIGHT * 0.64)
+        partner = self._create_boss_zombie(
+            self._find_open_position_near(partner_base),
+            stats,
+            speed_multiplier * 1.04,
+            health_multiplier * 0.82,
+            damage_multiplier,
+        )
+        if str(stats.get("zombie_type", "")) == "axe":
+            partner.can_throw_axe = True
+        partner.flank_side = -1
+        partner.flank_distance = 190.0
+        if self._boss_zombie is not None:
+            self._boss_zombie.flank_side = 1
+            self._boss_zombie.flank_distance = 170.0
+        self._extra_boss_zombies.append(partner)
+        self.zombies.append(partner)
 
     def _apply_loaded_state(self, data: Dict) -> None:
         self.player.player_health = int(data.get("player_health", 100))
@@ -1996,6 +2297,16 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.is_game_running = False
+            elif event.type == pygame.KEYDOWN and self._handle_cheat_key(event):
+                continue
+            elif self._show_tutorial:
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        self._close_tutorial()
+                    elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_e):
+                        self._advance_tutorial()
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    self._advance_tutorial()
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     if self._show_inventory:
@@ -2058,7 +2369,10 @@ class Game:
                         self._play_sfx("objective")
                         self._set_message("Save carregado.")
             elif event.type == pygame.MOUSEWHEEL:
-                self._cycle_quick_slot(-event.y)
+                if self._show_crafting:
+                    self._scroll_crafting(-event.y)
+                else:
+                    self._cycle_quick_slot(-event.y)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_pos = self._window_to_screen(event.pos)
                 if self._show_inventory:
@@ -2081,6 +2395,10 @@ class Game:
                     continue
                 attack_pressed = True
 
+        if self._show_tutorial:
+            self._process_tutorial_gamepad_input()
+            return direction, running, craft_pressed, search_pressed, attack_pressed, heal_pressed
+
         keys = pygame.key.get_pressed()
         if keys[pygame.K_w]:
             direction.y -= 1
@@ -2093,6 +2411,21 @@ class Game:
         running = running or keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
 
         return self._apply_gamepad_input(direction, running, craft_pressed, search_pressed, attack_pressed, heal_pressed)
+
+    def _handle_cheat_key(self, event: pygame.event.Event) -> bool:
+        digit = getattr(event, "unicode", "")
+        if not digit or not str(digit).isdigit():
+            return False
+
+        self._cheat_buffer = (self._cheat_buffer + str(digit))[-len(INFINITE_AMMO_CHEAT_CODE):]
+        if self._cheat_buffer != INFINITE_AMMO_CHEAT_CODE:
+            return False
+
+        self._infinite_ammo = True
+        self._cheat_buffer = ""
+        self._play_sfx("objective")
+        self._set_message("Cheat ativado: municao infinita.")
+        return True
 
     def process_menu_input(self) -> None:
         for event in pygame.event.get():
@@ -2235,6 +2568,8 @@ class Game:
             self._reset_game()
             self._has_started_game = True
             self._screen_state = "playing"
+            self._show_tutorial = True
+            self._tutorial_page = 0
             self._play_active_music()
             self._set_message("Novo jogo iniciado.")
         elif action == "continue_game":
@@ -2252,6 +2587,92 @@ class Game:
         elif action == "quit":
             self.is_game_running = False
 
+    def _tutorial_pages_legacy_unused(self) -> List[Tuple[str, List[str]]]:
+        return [
+            (
+                "Objetivo",
+                [
+                    "Explore ruas e prédios, junte recursos e avance andando até o final da rua.",
+                    "Guarde munição, comida e kit médico.",
+                    "Derrote o chefe para liberar a saida.",
+                ],
+            ),
+            (
+                "Botoes",
+                [
+                    "WASD move. SHIFT corre. Mouse mira. Espaco ou mouse esquerdo ataca.",
+                    "E busca recursos, abre portas e vasculha corpos.",
+                    "Scroll do mouse muda itens da barra de atalhos",
+                    "I abre inventario. B abre bancada de fabricacão. C usa item selecionado na barra de atalhos. Q usa cura ou comida rapidamente.",
+                ],
+            ),
+            (
+                "Armas",
+                [
+                    "Ao decorrer do jogo voce pode achar armas de fogo e de gelo, use a bancada de fabricação para fazer a munição.",
+                    "Troque de armas ao abrir o iventario e selecionar uma arma diferente da selecionada na barra de atalhos",
+                ],
+            ),
+        ]
+
+    def _tutorial_pages(self) -> List[Tuple[str, List[str]]]:
+        return [
+            (
+                "Objetivo",
+                [
+                    "Explore ruas e predios, junte recursos e avance andando ate o final da rua.",
+                    "Guarde municao, comida e kit medico.",
+                    "Derrote o chefe para liberar a saida.",
+                ],
+            ),
+            (
+                "Botoes",
+                [
+                    "WASD move. SHIFT corre. Mouse mira. Espaco ou mouse esquerdo ataca.",
+                    "E busca recursos, abre portas e vasculha corpos.",
+                    "Scroll do mouse muda itens da barra de atalhos.",
+                    "I abre inventario. B abre bancada. C usa item selecionado. Q usa cura ou comida rapidamente.",
+                ],
+            ),
+            (
+                "Armas",
+                [
+                    "Voce pode achar armas de fogo e de gelo. Use a bancada para fazer municao.",
+                    "Troque de arma abrindo o inventario e selecionando outra arma para a barra de atalhos.",
+                ],
+            ),
+        ]
+
+    def _advance_tutorial(self) -> None:
+        pages = self._tutorial_pages()
+        if self._tutorial_page < len(pages) - 1:
+            self._tutorial_page += 1
+            self._play_sfx("ui_move")
+        else:
+            self._close_tutorial()
+
+    def _close_tutorial(self) -> None:
+        if not self._show_tutorial:
+            return
+        self._show_tutorial = False
+        self._tutorial_page = 0
+        self._play_sfx("ui_close")
+
+    def _process_tutorial_gamepad_input(self) -> None:
+        gamepad = self._get_gamepad()
+        if gamepad is None:
+            self._gamepad_buttons_down.clear()
+            return
+
+        buttons = self._poll_gamepad_buttons(gamepad)
+        pressed = buttons - self._gamepad_buttons_down
+        button_map = self._gamepad_button_map(gamepad)
+        if GAMEPAD_A in pressed or self._has_any_button(pressed, button_map["start"]):
+            self._advance_tutorial()
+        elif GAMEPAD_B in pressed or self._has_any_button(pressed, button_map["back"]):
+            self._close_tutorial()
+        self._gamepad_buttons_down = buttons
+
     def _load_saved_game(self) -> bool:
         data = load_game(str(SAVE_GAME_PATH))
         if data is None:
@@ -2261,6 +2682,7 @@ class Game:
 
         self._reset_game()
         self._apply_loaded_state(data)
+        self._show_tutorial = False
         self._has_started_game = True
         self._screen_state = "playing"
         self._play_active_music()
@@ -2373,7 +2795,12 @@ class Game:
         world_rect = pygame.Rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT)
         for zombie in self.zombies:
             old_position = zombie.position.copy()
-            zombie.update(self.player.player_position, dt, world_rect)
+            if zombie is self._boss_zombie and self._is_summoner_boss_active():
+                self._update_summoner_boss(dt, world_rect)
+            elif self._is_flanking_boss(zombie):
+                self._update_flanking_boss(zombie, dt, world_rect)
+            else:
+                zombie.update(self.player.player_position, dt, world_rect)
             if zombie.consume_attack_started():
                 self._play_sfx(zombie.attack_sfx_name())
             if zombie.consume_axe_throw_ready():
@@ -2382,11 +2809,130 @@ class Game:
             if zombie.can_damage_player(self.player.player_position, self.player.radius):
                 if self.player.take_damage(zombie.attack_damage):
                     self._play_sfx("player_damage")
-                    self._set_message("Golpe pesado!" if zombie is self._boss_zombie else "Voce foi atingido!")
+                    self._set_message("Golpe pesado!" if self._is_boss_enemy(zombie) else "Voce foi atingido!")
             if zombie.is_dying() and not zombie.loot_given:
                 self._handle_zombie_death(zombie)
         self._separate_zombies(dt)
         self.zombies = [zombie for zombie in self.zombies if not zombie.is_dead()]
+        self._summoner_minion_ids = {
+            minion_id
+            for minion_id in self._summoner_minion_ids
+            if any(id(zombie) == minion_id and not zombie.is_dying() for zombie in self.zombies)
+        }
+
+    def _is_flanking_boss(self, zombie: Zombie) -> bool:
+        return self._is_boss_enemy(zombie) and hasattr(zombie, "flank_side") and not self._is_summoner_boss_active()
+
+    def _update_flanking_boss(self, zombie: Zombie, dt: float, world_rect: pygame.Rect) -> None:
+        if zombie.is_dying():
+            zombie.update(self.player.player_position, dt, world_rect)
+            return
+        player_pos = pygame.Vector2(self.player.player_position)
+        partner = next((boss for boss in self._boss_enemies() if boss is not zombie and not boss.is_dying()), None)
+        side = float(getattr(zombie, "flank_side", 1.0))
+        if partner is not None:
+            side = 1.0 if id(zombie) > id(partner) else -1.0
+
+        to_player = player_pos - zombie.position
+        if to_player.length_squared() <= 0.01:
+            forward = pygame.Vector2(1, 0)
+        else:
+            forward = to_player.normalize()
+        lateral = pygame.Vector2(-forward.y, forward.x) * side
+        flank_distance = float(getattr(zombie, "flank_distance", 170.0))
+        target = player_pos - forward * min(95.0, max(45.0, zombie.attack_range + 28.0)) + lateral * flank_distance
+        target.x = max(32, min(WORLD_WIDTH - 32, target.x))
+        target.y = max(32, min(WORLD_HEIGHT - 32, target.y))
+
+        if zombie.position.distance_to(player_pos) <= zombie.attack_range + 22:
+            zombie.update(self.player.player_position, dt, world_rect)
+        else:
+            zombie.update(tuple(target), dt, world_rect)
+
+    def _update_summoner_boss(self, dt: float, world_rect: pygame.Rect) -> None:
+        boss = self._boss_zombie
+        if boss is None:
+            return
+        if boss.is_dying():
+            boss.update(self.player.player_position, dt, world_rect)
+            return
+        if boss.freeze_timer > 0:
+            boss.update(boss.position, dt, world_rect)
+            return
+
+        player_pos = pygame.Vector2(self.player.player_position)
+        offset = boss.position - player_pos
+        if offset.length_squared() <= 0.01:
+            offset = pygame.Vector2(1, 0)
+        distance = offset.length()
+
+        target_distance = 280.0
+        if distance < target_distance:
+            direction = offset.normalize()
+        else:
+            arena_center = pygame.Vector2(WORLD_WIDTH * 0.5, WORLD_HEIGHT * 0.5)
+            direction = arena_center - boss.position
+            if direction.length_squared() <= 0.01:
+                direction = offset.rotate(90)
+            direction = direction.normalize()
+
+        boss.facing_direction = boss._direction_from_vector(player_pos - boss.position)
+        boss.position += direction * boss.speed * dt
+        boss._clamp_to_world(world_rect)
+        boss.update(boss.position, dt, world_rect)
+
+        self._summoner_timer -= dt
+        stats = self._boss_stats_for_map()
+        loop_level = self._boss_loop_level()
+        living_minions = len(self._summoner_minion_ids)
+        summon_max = int(
+            stats.get("phase_two_summon_max", stats.get("summon_max", 10))
+            if self._boss_phase_two_active
+            else stats.get("summon_max", 10)
+        ) + loop_level * 3
+        if loop_level == 0:
+            summon_max = max(8, summon_max - 6)
+        if self._summoner_timer <= 0 and living_minions < summon_max:
+            small_count = int(
+                stats.get("phase_two_small_count", stats.get("summon_count", 4))
+                if self._boss_phase_two_active
+                else stats.get("summon_count", 4)
+            ) + loop_level
+            axe_count = (int(stats.get("phase_two_axe_count", 0)) + loop_level) if self._boss_phase_two_active else 0
+            if loop_level == 0:
+                small_count = max(2, small_count - 1)
+                axe_count = max(0, axe_count - 1)
+            total_count = min(small_count + axe_count, summon_max - living_minions)
+            if total_count > 0:
+                axe_count = min(axe_count, total_count)
+                small_count = total_count - axe_count
+                self._summon_boss_wave(small_count, axe_count)
+            interval_key = "phase_two_summon_interval" if self._boss_phase_two_active else "summon_interval"
+            interval = float(stats.get(interval_key, stats.get("summon_interval", 7.0)))
+            if loop_level == 0:
+                interval += 0.9
+            self._summoner_timer = interval * max(0.68, 1.0 - loop_level * 0.08)
+
+    def _summon_boss_wave(self, small_count: int, axe_count: int = 0) -> None:
+        boss = self._boss_zombie
+        total_count = small_count + axe_count
+        if boss is None or total_count <= 0:
+            return
+
+        variants = ["small"] * small_count + ["axe"] * axe_count
+        random.shuffle(variants)
+        for index, variant_name in enumerate(variants):
+            angle = (360.0 / max(1, total_count)) * index + random.uniform(-18.0, 18.0)
+            spawn_base = boss.position + pygame.Vector2(1, 0).rotate(angle) * random.randint(90, 155)
+            zombie = self._spawn_zombie(spawn_base, forced_variant=variant_name)
+            if zombie is not None:
+                if variant_name == "axe":
+                    zombie.can_throw_axe = True
+                self._summoner_minion_ids.add(id(zombie))
+                self._add_alert_popup(zombie.position)
+
+        self._play_sfx("zombie_alert")
+        self._set_message("A criatura chamou mais mortos!")
 
     def _update_shot_impacts(self, dt: float) -> None:
         for impact in self.shot_impacts:
@@ -2433,15 +2979,16 @@ class Game:
         if boss is None or boss.is_dying() or self._boss_phase_two_active:
             return
         stats = self._boss_stats_for_map()
-        if str(stats.get("zombie_type", "")) != "axe":
-            return
         if boss.health > boss.max_health * 0.5:
             return
 
         self._boss_phase_two_active = True
-        boss.can_throw_axe = True
-        boss.attack_damage = max(boss.attack_damage, int(stats.get("attack_damage", boss.attack_damage)) + 4)
-        boss.attack_range = max(boss.attack_range, float(stats.get("attack_range", boss.attack_range)))
+        if str(stats.get("zombie_type", "")) == "axe":
+            boss.can_throw_axe = True
+            boss.attack_damage = max(boss.attack_damage, int(stats.get("attack_damage", boss.attack_damage)) + 4)
+            boss.attack_range = max(boss.attack_range, float(stats.get("attack_range", boss.attack_range)))
+        elif self._is_summoner_boss_active():
+            self._summoner_timer = 0.2
         self._play_sfx("zombie_alert")
         self._set_message(str(stats.get("phase_two_message", "Segunda fase!")))
 
@@ -2573,12 +3120,7 @@ class Game:
             self.player.start_pickup_animation()
             self._play_sfx("pickup_ammo")
             corpse.corpse_searched = True
-            rewards: Dict[str, int] = {}
-            for _ in range(random.randint(1, 2)):
-                item = random.choice(["pano", "balas", "balas", "polvora", "comida"])
-                amount_range = AMMO_LOOT_RANGES.get(item)
-                amount = random.randint(*amount_range) if amount_range is not None else 1
-                rewards[item] = rewards.get(item, 0) + amount
+            rewards = self._corpse_loot_rewards(corpse)
             granted = self._grant_rewards(rewards)
             self._add_item_popups(granted, corpse.position)
             return
@@ -2606,6 +3148,34 @@ class Game:
         if ambush_count > 0:
             self._play_sfx("zombie_alert")
             self._add_alert_popup(node.position)
+
+    def _corpse_loot_rewards(self, corpse: Zombie) -> Dict[str, int]:
+        rewards: Dict[str, int] = {}
+        if self._is_boss_map_path():
+            loot_pool = [
+                "balas",
+                "balas",
+                "balas",
+                "cartuchos",
+                "kit_medico",
+                "comida",
+                "balas_incendiarias",
+                "balas_perfurantes",
+                "cartuchos_incendiarios",
+            ]
+            rolls = random.randint(2, 3)
+        else:
+            loot_pool = ["pano", "balas", "balas", "polvora", "comida"]
+            rolls = random.randint(1, 2)
+
+        for _ in range(rolls):
+            item = random.choice(loot_pool)
+            amount_range = AMMO_LOOT_RANGES.get(item)
+            amount = random.randint(*amount_range) if amount_range is not None else 1
+            if item == "kit_medico" and corpse is self._boss_zombie:
+                amount += 1
+            rewards[item] = rewards.get(item, 0) + amount
+        return rewards
 
     def _grant_rewards(self, rewards: Dict[str, int]) -> Dict[str, int]:
         granted: Dict[str, int] = {}
@@ -2693,7 +3263,7 @@ class Game:
         ammo_cost = int(stats.get("ammo", 0))
         ammo_item = str(stats.get("ammo_item", "balas"))
 
-        if ammo_cost > 0 and self.inventory.get_quantity(ammo_item) < ammo_cost:
+        if ammo_cost > 0 and not self._infinite_ammo and self.inventory.get_quantity(ammo_item) < ammo_cost:
             self._play_sfx("gun_empty")
             self._set_message(f"Sem {ITEM_LABELS.get(ammo_item, ammo_item)}.")
             self._attack_timer = 0.2
@@ -2702,7 +3272,8 @@ class Game:
         player_pos = pygame.Vector2(self.player.player_position)
         self.player.start_attack_animation()
         if ammo_cost > 0:
-            self.inventory.remove_item(ammo_item, ammo_cost)
+            if not self._infinite_ammo:
+                self.inventory.remove_item(ammo_item, ammo_cost)
             weapon_family = str(stats.get("family", self.player.current_weapon))
             self._play_sfx("shotgun" if weapon_family == "escopeta" else "pistol")
             self._fire_gun(player_pos, attack_range, damage, stats)
@@ -2841,24 +3412,54 @@ class Game:
         if zombie.is_dying() and not zombie.loot_given:
             zombie.loot_given = True
             self._play_sfx("zombie_death")
-            if zombie is self._boss_zombie:
-                self._boss_defeated = True
-                self._bosses_defeated += 1
-                self._progress_level += 1
-                self._grant_boss_rewards()
-                self._play_active_music()
-                self._set_message("Chefe derrotado. Teleportes liberados.")
+            if self._is_boss_enemy(zombie):
+                if self._all_boss_enemies_defeated():
+                    self._complete_boss_defeat()
+                else:
+                    self._set_message("Um chefe caiu. O outro ainda bloqueia a saida.")
             else:
                 self._set_message("Zumbi abatido. Vasculhe o corpo com E.")
 
+    def _all_boss_enemies_defeated(self) -> bool:
+        bosses = self._boss_enemies()
+        return bool(bosses) and all(boss.is_dying() for boss in bosses)
+
+    def _complete_boss_defeat(self) -> None:
+        if self._boss_defeated:
+            return
+        self._boss_defeated = True
+        self._bosses_defeated += 1
+        self._progress_level += 1
+        if self._is_summoner_boss_active():
+            self._despawn_summoner_minions()
+        self._grant_boss_rewards()
+        self._play_active_music()
+        self._set_message("Chefe derrotado. Teleportes liberados.")
+
+    def _despawn_summoner_minions(self) -> None:
+        if not self._summoner_minion_ids:
+            return
+        self.zombies = [
+            zombie
+            for zombie in self.zombies
+            if id(zombie) not in self._summoner_minion_ids or self._is_boss_enemy(zombie)
+        ]
+        self._summoner_minion_ids.clear()
+
     def _damage_zombie(self, zombie: Zombie, damage: int, stats: Dict[str, object] | None = None) -> None:
+        shielded = False
+        if self._is_boss_enemy(zombie) and self._is_summoner_boss_active() and self._summoner_minion_ids:
+            if self._boss_loop_level() > 0:
+                reduction = float(self._boss_stats_for_map().get("shield_reduction", 0.45))
+                damage = max(1, int(damage * reduction))
+                shielded = True
         zombie.take_damage(damage)
         self._apply_weapon_status(zombie, stats)
         if zombie.is_dying() and not zombie.loot_given:
             self._handle_zombie_death(zombie)
         else:
             self._play_sfx("hit_flesh")
-            self._set_message("Acerto!")
+            self._set_message("A horda protege o chefe!" if shielded else "Acerto!")
 
     def _apply_weapon_status(self, zombie: Zombie, stats: Dict[str, object] | None) -> None:
         if stats is None or zombie.is_dying():
@@ -2962,6 +3563,9 @@ class Game:
         self._message = text
         self._message_timer = 2.8
 
+    def _is_gameplay_paused_by_panel(self) -> bool:
+        return self._show_inventory or self._show_crafting
+
     def update_game_state(
         self,
         direction: pygame.Vector2,
@@ -2974,6 +3578,13 @@ class Game:
     ) -> None:
         if self._game_over:
             self.player.update(dt)
+            return
+
+        if self._show_tutorial:
+            return
+
+        if self._is_gameplay_paused_by_panel():
+            self._handle_crafting(craft_pressed)
             return
 
         self._attack_timer = max(0.0, self._attack_timer - dt)
@@ -3005,8 +3616,17 @@ class Game:
         self._handle_crafting(craft_pressed)
 
         if self.player.is_dead():
-            self._game_over = True
-            self._set_message("Game Over - pressione ESC")
+            self._return_to_title_after_death()
+
+    def _return_to_title_after_death(self) -> None:
+        self._game_over = True
+        self._show_inventory = False
+        self._show_crafting = False
+        self._show_tutorial = False
+        self._screen_state = "main_menu"
+        self._menu_selected_index = 0
+        self._play_title_music()
+        self._set_menu_message("Voce morreu. Prepare outra tentativa.")
 
     def render_menu(self, dt: float) -> None:
         if self._menu_message_timer > 0:
@@ -3075,6 +3695,71 @@ class Game:
         pygame.draw.rect(panel, PALETTE["panel_edge"], panel.get_rect(), 2)
         pygame.draw.rect(panel, (28, 34, 37, 210), panel.get_rect().inflate(-10, -10), 1)
         self.screen.blit(panel, rect)
+
+    def _wrap_text(self, text: str, font: pygame.font.Font, max_width: int) -> List[str]:
+        lines: List[str] = []
+        current = ""
+        for word in text.split():
+            candidate = word if not current else f"{current} {word}"
+            if font.size(candidate)[0] <= max_width:
+                current = candidate
+            else:
+                if current:
+                    lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+        return lines
+
+    def _draw_tutorial_paragraph(
+        self,
+        text: str,
+        font: pygame.font.Font,
+        x: int,
+        y: int,
+        max_width: int,
+    ) -> int:
+        single_button_tokens = {"WASD", "SHIFT", "ESPACO", "E", "I", "B", "C", "Q", "ESC", "ENTER", "1", "2", "3", "4", "5", "6"}
+        button_phrases = (("scroll", "do", "mouse"), ("mouse", "esquerdo"))
+        raw_words = text.split()
+        highlighted_indexes: set[int] = set()
+        normalized_words = [word.strip(".,;:!?()").lower() for word in raw_words]
+        for start in range(len(raw_words)):
+            for phrase in button_phrases:
+                if tuple(normalized_words[start : start + len(phrase)]) == phrase:
+                    highlighted_indexes.update(range(start, start + len(phrase)))
+
+        line_words: List[Tuple[str, bool]] = []
+        line_width = 0
+        space_width = font.size(" ")[0]
+
+        def is_highlighted_word(index: int, word: str) -> bool:
+            if index in highlighted_indexes:
+                return True
+            stripped = word.strip(".,;:!?()")
+            return stripped in single_button_tokens
+
+        def flush_line(current_y: int) -> int:
+            draw_x = x
+            for word, highlighted in line_words:
+                surface = font.render(word, True, PALETTE["accent"] if highlighted else PALETTE["text"])
+                self.screen.blit(surface, (draw_x, current_y))
+                draw_x += surface.get_width() + space_width
+            return current_y + font.get_height() + 4
+
+        for index, word in enumerate(raw_words):
+            word_width = font.size(word)[0]
+            candidate_width = word_width if not line_words else line_width + space_width + word_width
+            if line_words and candidate_width > max_width:
+                y = flush_line(y)
+                line_words = [(word, is_highlighted_word(index, word))]
+                line_width = word_width
+            else:
+                line_words.append((word, is_highlighted_word(index, word)))
+                line_width = candidate_width
+        if line_words:
+            y = flush_line(y)
+        return y
 
     def _draw_saves_menu(self) -> None:
         panel_rect = pygame.Rect(0, 0, 510, 390 if self._has_started_game else 320)
@@ -3364,6 +4049,8 @@ class Game:
         self._draw_interact_hint()
         self._draw_ui()
         self._draw_damage_overlay()
+        if self._show_tutorial:
+            self._draw_tutorial_overlay()
         self._draw_gamepad_debug()
 
         if self._message_timer > 0:
@@ -3561,8 +4248,45 @@ class Game:
         if self._show_crafting:
             self._draw_crafting_panel()
 
+    def _draw_tutorial_overlay(self) -> None:
+        pages = self._tutorial_pages()
+        page_index = max(0, min(self._tutorial_page, len(pages) - 1))
+        title, paragraphs = pages[page_index]
+
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((6, 8, 10, 176))
+        self.screen.blit(overlay, (0, 0))
+
+        panel_rect = pygame.Rect(0, 0, 690, 360)
+        panel_rect.center = (WIDTH // 2, HEIGHT // 2)
+        self._draw_menu_panel(panel_rect)
+
+        title_text = self.menu_font.render(title.upper(), True, PALETTE["accent"])
+        self.screen.blit(title_text, (panel_rect.x + 34, panel_rect.y + 26))
+
+        page_text = self.small_font.render(f"{page_index + 1}/{len(pages)}", True, PALETTE["text_soft"])
+        self.screen.blit(page_text, page_text.get_rect(topright=(panel_rect.right - 34, panel_rect.y + 28)))
+
+        y = panel_rect.y + 78
+        max_width = panel_rect.width - 74
+        for paragraph in paragraphs:
+            y = self._draw_tutorial_paragraph(paragraph, self.font, panel_rect.x + 38, y, max_width)
+            y += 12
+
+        hint = "Enter Espaco E ou clique avanca    Esc pula"
+        if page_index == len(pages) - 1:
+            hint = "Enter Espaco E ou clique comeca    Esc pula"
+        hint_width = self.small_font.size(hint)[0]
+        self._draw_tutorial_paragraph(
+            hint,
+            self.small_font,
+            panel_rect.centerx - hint_width // 2,
+            panel_rect.bottom - 42,
+            panel_rect.width - 70,
+        )
+
     def _draw_boss_health_bar(self) -> None:
-        boss = self._boss_zombie
+        boss = next((boss for boss in self._boss_enemies() if not boss.is_dying()), self._boss_zombie)
         if boss is None or boss.is_dying():
             return
 
@@ -3582,8 +4306,9 @@ class Game:
         pygame.draw.rect(panel, (202, 55, 50), pygame.Rect(4, 12, fill_rect.width, height))
         pygame.draw.rect(panel, (255, 148, 110), pygame.Rect(4, 12, fill_rect.width, 4))
 
-        title = self.small_font.render(self._boss_name, True, PALETTE["text"])
-        panel.blit(title, title.get_rect(center=(width // 2, 7)))
+        if self._boss_name:
+            title = self.small_font.render(self._boss_name, True, PALETTE["text"])
+            panel.blit(title, title.get_rect(center=(width // 2, 7)))
         self.screen.blit(panel, (x, y))
 
     def _draw_quick_access_bar(self) -> None:
@@ -3655,19 +4380,21 @@ class Game:
         y = HEIGHT - 86
         self.screen.blit(icon, icon.get_rect(midleft=(x, y + 18)))
 
-        count_text = self.font.render(str(ammo_count), True, PALETTE["text"])
-        if isinstance(projectile_color, tuple) and ammo_item != "balas":
-            count_text = self.font.render(str(ammo_count), True, projectile_color)
+        count_label = "INF" if self._infinite_ammo and int(stats.get("ammo", 0)) > 0 else str(ammo_count)
+        count_text = self.font.render(count_label, True, PALETTE["text"])
         self.screen.blit(count_text, count_text.get_rect(midleft=(x + 48, y + 18)))
 
         bullet_x = x + 94
         for index in range(visible_rounds):
-            sprite = bullet if index < min(ammo_count, visible_rounds) else empty_bullet
+            loaded_rounds = visible_rounds if self._infinite_ammo and int(stats.get("ammo", 0)) > 0 else min(ammo_count, visible_rounds)
+            sprite = bullet if index < loaded_rounds else empty_bullet
             bullet_pos = (bullet_x + index * (sprite.get_width() + 4), y)
             self.screen.blit(sprite, bullet_pos)
             if isinstance(projectile_color, tuple) and ammo_item != "balas":
                 marker_rect = pygame.Rect(bullet_pos[0] + 2, bullet_pos[1] + sprite.get_height() - 4, sprite.get_width() - 4, 3)
-                pygame.draw.rect(self.screen, projectile_color, marker_rect)
+                marker = pygame.Surface(marker_rect.size, pygame.SRCALPHA)
+                marker.fill((*projectile_color, 95))
+                self.screen.blit(marker, marker_rect)
 
     def _draw_inventory_panel(self) -> None:
         panel_scale = 4
@@ -3777,9 +4504,13 @@ class Game:
         row_width = panel_rect.width - 52
         available_height = max(120, panel_rect.height - 92)
         gap = 8
-        row_height = min(86, max(48, (available_height - max(0, len(recipe_names) - 1) * gap) // max(1, len(recipe_names))))
+        row_height = 68
+        visible_count = max(1, available_height // (row_height + gap))
+        max_scroll = max(0, len(recipe_names) - visible_count)
+        self._crafting_scroll_index = max(0, min(self._crafting_scroll_index, max_scroll))
+        visible_recipes = recipe_names[self._crafting_scroll_index : self._crafting_scroll_index + visible_count]
         start_y = panel_rect.y + 62
-        for index, recipe_name in enumerate(recipe_names):
+        for index, recipe_name in enumerate(visible_recipes):
             rect = pygame.Rect(
                 panel_rect.x + 26,
                 start_y + index * (row_height + gap),
@@ -3788,6 +4519,19 @@ class Game:
             )
             rects.append((recipe_name, rect))
         return rects
+
+    def _scroll_crafting(self, direction: int) -> None:
+        recipe_names = self._available_recipe_names()
+        panel_rect = self._crafting_panel_rect()
+        row_height = 68
+        gap = 8
+        available_height = max(120, panel_rect.height - 92)
+        visible_count = max(1, available_height // (row_height + gap))
+        max_scroll = max(0, len(recipe_names) - visible_count)
+        new_index = max(0, min(max_scroll, self._crafting_scroll_index + direction))
+        if new_index != self._crafting_scroll_index:
+            self._crafting_scroll_index = new_index
+            self._play_sfx("inventory_move")
 
     def _draw_crafting_panel(self) -> None:
         panel = _load_ui_sprite("Crafting-main-menu.png", 5)
@@ -3800,7 +4544,7 @@ class Game:
         self.screen.blit(title, (panel_rect.x + 24, panel_rect.y + 18))
 
         recipe_names = self._available_recipe_names()
-        cell_scale = 2 if len(recipe_names) > 4 else 3
+        cell_scale = 2
         cell = _load_ui_sprite("Crafting-cell.png", cell_scale)
         plus = _load_ui_sprite("Crafting_Plus.png", cell_scale)
         equal = _load_ui_sprite("Crafting_Equal.png", cell_scale)
@@ -3832,14 +4576,23 @@ class Game:
             self._draw_crafting_item_on(row_surface, result_rect, recipe_name, int(recipe.get("amount", 1)), craftable)
 
             if not craftable:
-                row_surface.fill((80, 80, 80, 255), special_flags=pygame.BLEND_RGBA_MULT)
-                overlay = pygame.Surface(row_surface.get_size(), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 105))
-                row_surface.blit(overlay, (0, 0))
+                row_surface = _desaturate_sprite(row_surface, 0.86)
 
             self.screen.blit(row_surface, row_rect)
             if craftable:
                 pygame.draw.rect(self.screen, PALETTE["accent"], row_rect, 2, border_radius=4)
+
+        self._draw_crafting_scrollbar(panel_rect, len(recipe_names), len(self._crafting_recipe_rects()))
+
+    def _draw_crafting_scrollbar(self, panel_rect: pygame.Rect, recipe_count: int, recipe_rect_count: int) -> None:
+        if recipe_count <= recipe_rect_count:
+            return
+        track = pygame.Rect(panel_rect.right - 18, panel_rect.y + 62, 5, panel_rect.height - 98)
+        max_scroll = max(1, recipe_count - recipe_rect_count)
+        handle_height = max(24, int(track.height * (recipe_rect_count / max(1, recipe_count))))
+        handle_y = track.y + int((track.height - handle_height) * (self._crafting_scroll_index / max_scroll))
+        pygame.draw.rect(self.screen, (38, 42, 44), track, border_radius=2)
+        pygame.draw.rect(self.screen, PALETTE["accent"], pygame.Rect(track.x, handle_y, track.width, handle_height), border_radius=2)
 
     def _draw_crafting_item_on(
         self,
@@ -3856,7 +4609,7 @@ class Game:
             if tint is not None:
                 icon = _tint_sprite(icon, tint)
             if not available:
-                icon = _dim_sprite(icon)
+                icon = _desaturate_sprite(icon, 0.86)
             surface.blit(icon, icon.get_rect(center=(cell_rect.centerx, cell_rect.centery - 5)))
         else:
             label = ITEM_LABELS.get(item_name, item_name[:3]).upper()

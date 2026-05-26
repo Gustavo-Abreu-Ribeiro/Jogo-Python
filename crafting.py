@@ -9,6 +9,7 @@ class CraftingSystem:
 
     crafting_recipes: Dict[str, Dict[str, object]] = {
         "taco": {"cost": {"madeira": 3}},
+        "comida": {"cost": {"erva": 1, "madeira": 1}, "amount": 1},
         "balas": {"cost": {"metal": 1, "polvora": 1}, "amount": 6},
         "cartuchos": {"cost": {"metal": 2, "polvora": 1}, "amount": 3, "unlock_any": ["escopeta", "escopeta_incendiaria"]},
         "balas_incendiarias": {

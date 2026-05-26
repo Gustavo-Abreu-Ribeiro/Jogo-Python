@@ -42,6 +42,25 @@ python -m pygbag --build .
 
 O Pygbag gera a pasta `build/web`. Essa pasta pode ir para GitHub Pages, itch.io ou hospedagem estatica.
 
+### GitHub Pages
+
+Este repositorio ja tem um workflow em `.github/workflows/pages.yml`.
+
+1. No GitHub, abra `Settings > Pages`.
+2. Em `Build and deployment`, selecione `Source: GitHub Actions`.
+3. Faça push na branch `main`, ou rode manualmente `Publish web build` na aba `Actions`.
+4. Ao terminar, o GitHub mostra a URL do jogo no resumo do deploy.
+
+O workflow:
+
+- instala Python e dependencias de `requirements-web.txt`;
+- instala `ffmpeg`;
+- converte `.wav` e `.mp3` para `.ogg` durante o CI;
+- roda `python -m pygbag --build .`;
+- publica `build/web` no GitHub Pages.
+
+Como os `.ogg` sao gerados no CI, voce nao precisa commitar audio convertido. Se quiser testar audio localmente no navegador, rode a conversao da secao de preparacao antes do build local.
+
 ## Manutencao
 
 E razoavelmente facil manter se seguirmos estas regras:
