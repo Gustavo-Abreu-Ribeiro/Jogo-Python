@@ -12,17 +12,27 @@ python -m pip install -r requirements-web.txt
 
 2. Converta audio para OGG antes do build. O codigo ja procura `.ogg` no navegador, mantendo `.wav` e `.mp3` no desktop.
 
-Exemplo com ffmpeg:
+O formato recomendado para o navegador e `.ogg` com codec Vorbis. Evite deixar o GitHub Actions convertendo audio a cada publicacao; converta uma vez, teste, e commit os `.ogg`.
+
+Se o `ffmpeg` nao estiver instalado:
+
+```powershell
+winget install Gyan.FFmpeg
+```
+
+Depois feche e abra o terminal. Para converter:
 
 ```powershell
 Get-ChildItem musics -Recurse -Include *.wav,*.mp3 | ForEach-Object {
-  ffmpeg -y -i $_.FullName ([System.IO.Path]::ChangeExtension($_.FullName, ".ogg"))
+  ffmpeg -y -i $_.FullName -c:a libvorbis -q:a 4 ([System.IO.Path]::ChangeExtension($_.FullName, ".ogg"))
 }
 ```
 
+Tambem pode usar Audacity ou outro conversor, desde que o arquivo final fique com o mesmo nome base e na mesma pasta. Exemplo: `musics/Menu_Music.mp3` precisa ter `musics/Menu_Music.ogg`.
+
 3. Os mapas usados pelo build web ficam em `maps/`. Para adicionar mapas novos, copie o `.tmj` para `maps/` e deixe seus tilesets em `maps/Sprites/`.
 
-O arquivo `pygbag.ini` ignora os audios `.wav/.mp3` no pacote web. Quando existirem arquivos `.ogg` com o mesmo nome base, eles serao incluidos.
+O arquivo `pygbag.ini` ignora os audios `.wav/.mp3` no pacote web. Os `.ogg` com o mesmo nome base serao incluidos.
 
 ## Rodar local
 
@@ -48,18 +58,17 @@ Este repositorio ja tem um workflow em `.github/workflows/pages.yml`.
 
 1. No GitHub, abra `Settings > Pages`.
 2. Em `Build and deployment`, selecione `Source: GitHub Actions`.
-3. Faça push na branch `main`, ou rode manualmente `Publish web build` na aba `Actions`.
+3. Faca push na branch `main`, ou rode manualmente `Publish web build` na aba `Actions`.
 4. Ao terminar, o GitHub mostra a URL do jogo no resumo do deploy.
 
 O workflow:
 
 - instala Python e dependencias de `requirements-web.txt`;
-- instala `ffmpeg`;
-- converte `.wav` e `.mp3` para `.ogg` durante o CI;
+- confere se cada `.wav` ou `.mp3` tem um `.ogg` correspondente;
 - roda `python -m pygbag --build .`;
 - publica `build/web` no GitHub Pages.
 
-Como os `.ogg` sao gerados no CI, voce nao precisa commitar audio convertido. Se quiser testar audio localmente no navegador, rode a conversao da secao de preparacao antes do build local.
+Se faltar algum `.ogg`, o workflow falha rapido com o nome exato do arquivo. Isso evita o build travar em conversao de audio dentro do GitHub Actions.
 
 ## Manutencao
 

@@ -30,19 +30,21 @@ jobs:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Install system tools
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
       - name: Install Python dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r requirements-web.txt
 
-      - name: Convert audio for the browser
+      - name: Check browser audio files
         shell: bash
         run: |
-          find musics -type f \( -name '*.wav' -o -name '*.mp3' \) -print0 |
-            while IFS= read -r -d '' file; do
-              ffmpeg -y -i "$file" "${file%.*}.ogg"
-            done
+          missing=0
+          while IFS= read -r -d '' file; do
+            ogg="${file%.*}.ogg"
+            if [ ! -f "$ogg" ]; then
+              echo "::error file=$file::Missing browser audio file: $ogg"
+              missing=1
+            fi
+          done < <(find musics -type f \( -name '*.wav' -o -name '*.mp3' \) -print0)
+          exit "$missing"
 
       - name: Build Pygbag package
         run: python -m pygbag --build .
