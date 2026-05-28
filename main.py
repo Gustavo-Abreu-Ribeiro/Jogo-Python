@@ -19,7 +19,7 @@ from map_loader import TiledMap
 from player import Player
 from save_system import load_game, save_exists, save_game
 from weapons import WEAPONS, WEAPON_FAMILIES, WEAPON_ITEMS
-from zombie import Zombie
+from zombie import AXE_THROW_MAX_DISTANCE, AXE_THROW_MIN_DISTANCE, Zombie
 
 
 IS_WEB = sys.platform == "emscripten"
@@ -1085,6 +1085,7 @@ class Game:
         self._attack_timer = 0.0
         self._transition_cooldown = 0.0
         self._camera = pygame.Vector2()
+        self._player_velocity = pygame.Vector2()
         self._cheat_buffer = ""
         self._infinite_ammo = False
 
@@ -1367,6 +1368,7 @@ class Game:
         self._attack_timer = 0.0
         self._transition_cooldown = 0.0
         self._camera = pygame.Vector2()
+        self._player_velocity = pygame.Vector2()
         self._cheat_buffer = ""
         self._infinite_ammo = False
         self._current_map_path = self._first_existing_path(NORMAL_MAP_PATHS, TILED_MAP_PATH)
@@ -2218,10 +2220,10 @@ class Game:
         if str(stats.get("zombie_type", "")) == "axe":
             partner.can_throw_axe = True
         partner.flank_side = -1
-        partner.flank_distance = 190.0
+        partner.flank_distance = 118.0
         if self._boss_zombie is not None:
             self._boss_zombie.flank_side = 1
-            self._boss_zombie.flank_distance = 170.0
+            self._boss_zombie.flank_distance = 92.0
         self._extra_boss_zombies.append(partner)
         self.zombies.append(partner)
 
@@ -2783,31 +2785,85 @@ class Game:
     def _is_flanking_boss(self, zombie: Zombie) -> bool:
         return self._is_boss_enemy(zombie) and hasattr(zombie, "flank_side") and not self._is_summoner_boss_active()
 
+    def _boss_duo_escape_direction(
+        self,
+        player_pos: pygame.Vector2,
+        pressure_boss: Zombie | None,
+    ) -> pygame.Vector2:
+        player_velocity = getattr(self, "_player_velocity", pygame.Vector2())
+        if player_velocity.length_squared() > 28.0 * 28.0:
+            return player_velocity.normalize()
+        if pressure_boss is not None:
+            offset = player_pos - pressure_boss.position
+            if offset.length_squared() > 0.01:
+                return offset.normalize()
+        return pygame.Vector2(1, 0)
+
+    def _update_duo_boss_target(
+        self,
+        zombie: Zombie,
+        target: Tuple[float, float] | pygame.Vector2,
+        dt: float,
+        world_rect: pygame.Rect,
+        player_distance: float,
+    ) -> None:
+        original_speed = zombie.speed
+        if player_distance > zombie.attack_range + 190:
+            zombie.speed *= 1.32
+        elif player_distance > zombie.attack_range + 105:
+            zombie.speed *= 1.16
+        try:
+            zombie.update(target, dt, world_rect)
+        finally:
+            zombie.speed = original_speed
+
     def _update_flanking_boss(self, zombie: Zombie, dt: float, world_rect: pygame.Rect) -> None:
         if zombie.is_dying():
             zombie.update(self.player.player_position, dt, world_rect)
             return
         player_pos = pygame.Vector2(self.player.player_position)
-        partner = next((boss for boss in self._boss_enemies() if boss is not zombie and not boss.is_dying()), None)
+        living_bosses = [boss for boss in self._boss_enemies() if boss is not None and not boss.is_dying()]
+        partner = next((boss for boss in living_bosses if boss is not zombie), None)
+        pressure_boss = min(living_bosses, key=lambda boss: boss.position.distance_squared_to(player_pos), default=zombie)
+        player_distance = zombie.position.distance_to(player_pos)
         side = float(getattr(zombie, "flank_side", 1.0))
         if partner is not None:
             side = 1.0 if id(zombie) > id(partner) else -1.0
 
-        to_player = player_pos - zombie.position
-        if to_player.length_squared() <= 0.01:
-            forward = pygame.Vector2(1, 0)
-        else:
-            forward = to_player.normalize()
-        lateral = pygame.Vector2(-forward.y, forward.x) * side
-        flank_distance = float(getattr(zombie, "flank_distance", 170.0))
-        target = player_pos - forward * min(95.0, max(45.0, zombie.attack_range + 28.0)) + lateral * flank_distance
+        if zombie is pressure_boss:
+            self._update_duo_boss_target(zombie, self.player.player_position, dt, world_rect, player_distance)
+            return
+
+        if (
+            player_distance <= zombie.attack_range + 72
+            or (
+                zombie.zombie_type == "axe"
+                and zombie.can_throw_axe
+                and AXE_THROW_MIN_DISTANCE <= player_distance <= AXE_THROW_MAX_DISTANCE
+            )
+        ):
+            self._update_duo_boss_target(zombie, self.player.player_position, dt, world_rect, player_distance)
+            return
+
+        escape_direction = self._boss_duo_escape_direction(player_pos, pressure_boss)
+        lateral = pygame.Vector2(-escape_direction.y, escape_direction.x) * side
+        flank_distance = max(54.0, min(float(getattr(zombie, "flank_distance", 110.0)), player_distance * 0.42))
+        lead_distance = 58.0
+        player_velocity = getattr(self, "_player_velocity", pygame.Vector2())
+        if player_velocity.length_squared() > 20.0 * 20.0:
+            lead_distance = max(48.0, min(118.0, player_velocity.length() * 0.34))
+
+        target = player_pos + escape_direction * lead_distance + lateral * flank_distance
+        if partner is not None and target.distance_squared_to(partner.position) < 96.0 * 96.0:
+            target += lateral * 58.0
         target.x = max(32, min(WORLD_WIDTH - 32, target.x))
         target.y = max(32, min(WORLD_HEIGHT - 32, target.y))
-
-        if zombie.position.distance_to(player_pos) <= zombie.attack_range + 22:
-            zombie.update(self.player.player_position, dt, world_rect)
-        else:
-            zombie.update(tuple(target), dt, world_rect)
+        if (
+            zombie.position.distance_to(target) <= zombie.attack_range + 24
+            and player_distance > zombie.attack_range + 72
+        ):
+            target = player_pos
+        self._update_duo_boss_target(zombie, tuple(target), dt, world_rect, player_distance)
 
     def _update_summoner_boss(self, dt: float, world_rect: pygame.Rect) -> None:
         boss = self._boss_zombie
@@ -3555,6 +3611,8 @@ class Game:
         self.player.move(direction, dt, running)
         self.player.clamp_to_area(WORLD_WIDTH, WORLD_HEIGHT)
         self._resolve_player_collisions(previous_player_position)
+        current_player_position = pygame.Vector2(self.player.player_position)
+        self._player_velocity = (current_player_position - previous_player_position) / max(dt, 0.001)
         if self._gamepad_aim_vector.length_squared() > 0.04:
             aim_target = pygame.Vector2(self.player.player_position) + self._gamepad_aim_vector.normalize() * 120
             self.player.aim_at(aim_target)
