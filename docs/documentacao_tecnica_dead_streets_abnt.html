@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Dead Streets - Documentação Técnica ABNT</title>
+  <style>
+@page {
+  size: A4;
+  margin: 3cm 2cm 2cm 3cm;
+}
+* { box-sizing: border-box; }
+html { font-family: "Times New Roman", Times, serif; color: #111; }
+body { margin: 0; font-size: 12pt; line-height: 1.5; text-align: justify; orphans: 3; widows: 3; }
+.cover, .abstract-page, .toc-page { min-height: 24.7cm; page-break-after: always; }
+.cover { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.institution { margin-top: 0.5cm; text-transform: uppercase; font-weight: 700; }
+.cover-title { margin-top: 8cm; font-size: 16pt; text-transform: uppercase; font-weight: 700; max-width: 15cm; }
+.cover-subtitle { margin-top: 1.2cm; font-size: 13pt; max-width: 15cm; }
+.cover-bottom { margin-top: auto; margin-bottom: 0.5cm; }
+.title-page-title { margin-top: 4cm; text-align: center; text-transform: uppercase; font-weight: 700; }
+.note { margin-left: 7cm; margin-top: 3cm; font-size: 11pt; text-align: justify; }
+h1 { font-size: 12pt; text-transform: uppercase; margin: 0 0 18pt; page-break-after: avoid; break-after: avoid; }
+h2 { font-size: 12pt; margin: 18pt 0 8pt; page-break-after: avoid; break-after: avoid; }
+h3 { font-size: 12pt; margin: 14pt 0 6pt; page-break-after: avoid; break-after: avoid; font-style: italic; }
+p { margin: 0 0 10pt; text-indent: 1.25cm; text-align: justify; }
+ul { margin: 0 0 12pt 1.25cm; }
+li { margin-bottom: 4pt; text-align: justify; }
+table { width: 100%; border-collapse: collapse; margin: 10pt 0 16pt; font-size: 9.2pt; line-height: 1.25; page-break-inside: auto; break-inside: auto; }
+tr { page-break-inside: avoid; break-inside: avoid; }
+th, td { border: 0.4pt solid #555; padding: 4.5pt; vertical-align: top; text-align: left; }
+th { background: #e9e8df; font-weight: 700; }
+figure { margin: 12pt 0 16pt; text-align: center; page-break-inside: avoid; break-inside: avoid; }
+figure img { max-width: 100%; max-height: 20cm; object-fit: contain; border: 0.4pt solid #777; }
+figure.diagram img { max-height: 17.5cm; border: 0.4pt solid #777; }
+figcaption { margin-top: 5pt; font-size: 10pt; text-align: center; }
+.section { page-break-before: always; break-before: page; }
+.page-break { page-break-before: always; }
+.code { white-space: pre-wrap; text-align: left; background: #f5f5f1; border: 0.4pt solid #777; padding: 7pt; font-family: "Courier New", monospace; font-size: 7pt; line-height: 1.15; page-break-inside: avoid; break-inside: avoid; overflow-wrap: anywhere; }
+.toc-list { margin-top: 1cm; }
+.toc-row { display: flex; justify-content: space-between; border-bottom: 0.3pt dotted #777; margin: 6pt 0; text-align: left; }
+.toc-row span:first-child { background: white; padding-right: 6pt; }
+.toc-row span:last-child { background: white; padding-left: 6pt; }
+.small { font-size: 10pt; }
+.no-indent { text-indent: 0; }
+.center { text-align: center; text-indent: 0; }
+.map-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10pt 12pt; page-break-inside: auto; break-inside: auto; }
+.map-grid figure { margin: 0 0 10pt; }
+.map-grid img { max-height: 6.8cm; }
+.appendix-table { font-size: 8pt; }
+.compact-table { font-size: 8pt; line-height: 1.18; }
+.caption-note { font-size: 9pt; text-align: center; text-indent: 0; }
+.tech-note { border-left: 2pt solid #777; background: #f7f7f2; padding: 7pt 9pt 3pt; margin: 8pt 0 12pt; page-break-inside: avoid; break-inside: avoid; }
+.tech-note p { margin-bottom: 4pt; }
+.tech-note ul { margin-bottom: 4pt; }
+</style>
+</head>
+<body>
+
+    <div class="cover">
+      <div class="institution">CENTRO UNIVERSITÁRIO DO DISTRITO FEDERAL - UDF<br>Programação de Computadores - UDF</div>
+      <div class="cover-title">Dead Streets: DOCUMENTAÇÃO TÉCNICA DO DESENVOLVIMENTO DE UM JOGO 2D DE SOBREVIVÊNCIA EM PYTHON</div>
+      <div class="cover-subtitle">Gustavo Emanuel Abreu Ribeiro<br>RGM 32237740</div>
+      <div class="cover-bottom">Brasília<br>2026</div>
+    </div>
+    <div class="cover">
+      <div class="institution">Gustavo Emanuel Abreu Ribeiro<br>RGM 32237740</div>
+      <div class="title-page-title">Dead Streets: DOCUMENTAÇÃO TÉCNICA DO DESENVOLVIMENTO DE UM JOGO 2D DE SOBREVIVÊNCIA EM PYTHON</div>
+      <p class="note">Documentação técnica apresentada à disciplina Programação de Computadores - UDF, ministrada por Professora Karla Roberto Sartin, como registro profissional do processo de desenvolvimento, arquitetura, implementação, fluxos de uso, validação e implantação do projeto Dead Streets.</p>
+      <div class="cover-bottom">Brasília<br>2026</div>
+    </div>
+    
+    <div class="abstract-page">
+      <h1>RESUMO</h1>
+      <p>Este documento apresenta a documentação técnica completa do jogo Dead Streets, um jogo 2D de sobrevivência desenvolvido em Python com Pygame, mapas criados no Tiled, sprites em pixel art, áudio em OGG, suporte a desktop e empacotamento web por Pygbag/WebAssembly. O projeto implementa exploração em mapas, movimentação com teclado, mouse e controle, inventário, atalhos rápidos, crafting, armas corpo a corpo e de fogo, munições especiais, inimigos com variantes, arenas de boss, transições de áreas, save local e persistência no navegador. A documentação descreve os objetivos, metodologia, requisitos, arquitetura, módulos, estruturas de dados, fluxos de jogo, casos de uso, validação e implantação. Também são incluídas figuras geradas a partir dos próprios mapas e assets do repositório, além de trechos de código numerados e tabelas técnicas.</p>
+      <p class="no-indent"><strong>Palavras-chave:</strong> Python. Pygame. Jogo 2D. Sobrevivência. Tiled. WebAssembly. Documentação técnica.</p>
+    </div>
+    <div class="toc-page">
+      <h1>SUMÁRIO</h1>
+      <div class="toc-list">
+        <div class="toc-row"><span>1 Introdução</span><span>5</span></div><div class="toc-row"><span>2 Metodologia de desenvolvimento</span><span>7</span></div><div class="toc-row"><span>3 Escopo e requisitos</span><span>9</span></div><div class="toc-row"><span>4 Arquitetura do sistema</span><span>11</span></div><div class="toc-row"><span>5 Modelagem de dados e assets</span><span>15</span></div><div class="toc-row"><span>6 Implementação dos sistemas principais</span><span>21</span></div><div class="toc-row"><span>7 Casos de uso e fluxos</span><span>31</span></div><div class="toc-row"><span>8 Interface, experiência e controles</span><span>35</span></div><div class="toc-row"><span>9 Persistência, build web e implantação</span><span>37</span></div><div class="toc-row"><span>10 Validação e qualidade</span><span>38</span></div><div class="toc-row"><span>11 Conclusão</span><span>40</span></div><div class="toc-row"><span>12 Referências</span><span>41</span></div><div class="toc-row"><span>A Apêndice A - Inventário técnico de funções</span><span>42</span></div><div class="toc-row"><span>B Apêndice B - Trechos de código comentados</span><span>49</span></div>
+      </div>
+    </div>
+    <section class="section page-break" id="s-1introdução"><h1>1 Introdução</h1><p>O projeto Dead Streets é um jogo 2D de sobrevivência em visão superior, construído em Python com a biblioteca Pygame. A proposta combina exploração de cenários pós-apocalípticos, combate contra zumbis, gerenciamento de recursos, criação de itens, coleta de loot e progressão por mapas normais, interiores e arenas de boss. O jogo foi estruturado para execução local em desktop e para publicação em navegador por meio de Pygbag/WebAssembly.</p><p>A documentação técnica tem como finalidade registrar o desenvolvimento de forma profissional, detalhando decisões de arquitetura, organização do código, regras de negócio, estruturas de dados, assets, fluxos de uso, requisitos, validação e implantação. O documento também preserva uma visão acadêmica do projeto, com introdução, metodologia e conclusão, e uma visão operacional, com tabelas, diagramas, trechos de código e especificações dos módulos.</p><p>O repositório analisado contém 8 arquivos Python principais, 6663 linhas de código Python, 10 mapas TMJ, 17 tilesets externos, 2162 sprites PNG e 40 arquivos de áudio OGG. Esses números evidenciam que o projeto extrapola um protótipo mínimo e já possui subsistemas integrados de jogo, apresentação, entrada, persistência e publicação.</p><h2>1.1 Problema</h2><p>Jogos 2D com múltiplos sistemas exigem coordenação entre renderização, entrada, física simplificada, IA, colisão, dados de mapa, áudio, inventário e persistência. Sem documentação, a manutenção se torna difícil porque regras importantes ficam implícitas no código. O problema tratado por este documento é transformar o conhecimento disperso no repositório em uma referência técnica organizada, capaz de orientar manutenção, avaliação acadêmica e futuras evoluções.</p><h2>1.2 Objetivo geral</h2><p>Descrever detalhadamente o processo de desenvolvimento e a arquitetura do Dead Streets, apresentando seus módulos, fluxos, requisitos, casos de uso, assets, regras internas e procedimentos de execução e publicação.</p><h2>1.3 Objetivos específicos</h2><ul><li>Identificar os módulos e responsabilidades técnicas do projeto.</li><li>Documentar a integração entre Pygame, mapas Tiled, sprites, áudio e persistência.</li><li>Registrar requisitos funcionais e não funcionais do jogo.</li><li>Apresentar casos de uso, fluxos de execução e diagramas de apoio.</li><li>Listar inventário, receitas, armas, mapas e funções relevantes.</li><li>Descrever validação, build web, limitações e oportunidades de evolução.</li></ul><h2>1.4 Escopo do documento</h2><p>O documento cobre o código existente no repositório local, incluindo os arquivos Python, mapas, tilesets, sprites, áudio, configurações de build e README. Não são tratados aspectos jurídicos de licenciamento de assets além da menção de que os recursos visuais e sonoros compõem o pacote do projeto. A análise técnica se concentra no funcionamento implementado e nos contratos observáveis entre módulos.</p></section><section class="section" id="s-2metodologia-de-desenvolvimento"><h1>2 Metodologia de desenvolvimento</h1><p>O desenvolvimento seguiu uma abordagem incremental e orientada a protótipos jogáveis. Em vez de separar longamente análise e implementação, os sistemas foram incorporados ao loop principal de jogo e refinados conforme novas necessidades surgiram: primeiro a movimentação e renderização, depois colisão e mapas, em seguida inventário, crafting, combate, inimigos, bosses, áudio, save e empacotamento web.</p><p>A escolha de Pygame permitiu controlar diretamente surfaces, sprites, eventos, joystick, mixer de áudio e temporização. O Tiled foi usado como ferramenta de autoria de mapas, separando o conteúdo espacial do código. O Pygbag foi adotado como solução de empacotamento web, permitindo que o jogo Python fosse executado no navegador via WebAssembly.</p><h2>2.1 Etapas executadas</h2><table class=""><thead><tr><th>Etapa</th><th>Descrição</th><th>Evidência no projeto</th></tr></thead><tbody><tr><td>Concepção</td><td>Definição de um jogo de sobrevivência zumbi com exploração e combate.</td><td>README, título Dead Streets e assets pós-apocalípticos.</td></tr><tr><td>Base técnica</td><td>Inicialização do Pygame, janela, loop, FPS e estados de menu/jogo.</td><td>main.py, classe Game e função main.</td></tr><tr><td>Mundo e mapas</td><td>Criação de mapas TMJ no Tiled e carregamento por camadas.</td><td>maps/*.tmj, map_loader.py.</td></tr><tr><td>Jogador</td><td>Implementação de movimento, stamina, vida, fome, mira e animações.</td><td>player.py.</td></tr><tr><td>Sistemas</td><td>Inventário, crafting, armas, loot e atalhos rápidos.</td><td>inventory.py, crafting.py, weapons.py, main.py.</td></tr><tr><td>IA e combate</td><td>Zumbis com tipos, colisões, ataques, bosses e projéteis.</td><td>zombie.py e métodos de combate em main.py.</td></tr><tr><td>Polimento</td><td>Áudio OGG, UI, mensagens, popups e suporte a controle.</td><td>audio/, sprites/ui, métodos de menu/UI.</td></tr><tr><td>Persistência e web</td><td>Save em JSON/localStorage e build Pygbag.</td><td>save_system.py, pygbag.ini e tools/patch_web_build.py.</td></tr></tbody></table><h2>2.2 Critérios de organização</h2><p>A organização foi baseada em separação por responsabilidade. Dados estáticos de armas ficam em weapons.py; receitas em crafting.py; inventário em inventory.py; persistência em save_system.py; mapas em map_loader.py; jogador em player.py; inimigos em zombie.py. O arquivo main.py concentra o loop e a orquestração porque muitos comportamentos dependem simultaneamente de entrada, estado, renderização e interação entre entidades.</p><h2>2.3 Padrões de implementação adotados</h2><ul><li>Uso de constantes para configurar dimensões, alcance de interação, áudio, controle e dificuldade.</li><li>Uso de dicionários declarativos para receitas, armas, labels e ícones.</li><li>Uso de classes para entidades persistentes do domínio do jogo.</li><li>Uso de cache de sprites e tiles para reduzir carregamentos repetidos.</li><li>Uso de layers do Tiled para derivar colisões, loot, portas e teletransportes.</li><li>Uso de validação manual e execução local para confirmar comportamento de gameplay.</li></ul></section><section class="section" id="s-3escopo-e-requisitos"><h1>3 Escopo e requisitos</h1><p>O escopo funcional do jogo inclui uma experiência jogável completa: o usuário inicia ou carrega uma partida, explora mapas, coleta recursos, enfrenta inimigos, gerencia itens, cria equipamentos, atravessa áreas e salva progresso. O escopo técnico inclui execução desktop e web, carregamento de assets, suporte a controle e persistência compatível com ambiente local e navegador.</p><h2>3.1 Requisitos funcionais</h2><table class=""><thead><tr><th>Código</th><th>Requisito</th><th>Descrição</th></tr></thead><tbody><tr><td>RF01</td><td>Menu inicial</td><td>Permitir iniciar novo jogo, carregar saves, ajustar configurações e acessar tutorial.</td></tr><tr><td>RF02</td><td>Movimentação</td><td>Permitir mover o jogador por teclado e controle, com corrida condicionada à stamina.</td></tr><tr><td>RF03</td><td>Mira e ataque</td><td>Permitir mirar com mouse ou analógico e atacar com melee ou arma equipada.</td></tr><tr><td>RF04</td><td>Inventário</td><td>Armazenar recursos, consumíveis, munições e armas coletadas.</td></tr><tr><td>RF05</td><td>Atalhos rápidos</td><td>Permitir selecionar slots de 1 a 6 para armas e itens úteis.</td></tr><tr><td>RF06</td><td>Crafting</td><td>Permitir criar itens a partir de receitas e recursos disponíveis.</td></tr><tr><td>RF07</td><td>Loot</td><td>Permitir buscar recursos em carros, natureza, despensas e corpos.</td></tr><tr><td>RF08</td><td>Inimigos</td><td>Gerar zumbis com variantes, vida, ataques, animações e morte.</td></tr><tr><td>RF09</td><td>Mapas</td><td>Carregar mapas externos do Tiled com colisões, portas e teletransportes.</td></tr><tr><td>RF10</td><td>Bosses</td><td>Executar arenas de boss e conceder recompensas após derrota.</td></tr><tr><td>RF11</td><td>Áudio</td><td>Reproduzir música e efeitos sonoros configuráveis.</td></tr><tr><td>RF12</td><td>Persistência</td><td>Salvar e carregar partida em arquivo JSON ou localStorage.</td></tr></tbody></table><h2>3.2 Requisitos não funcionais</h2><table class=""><thead><tr><th>Código</th><th>Requisito</th><th>Descrição</th></tr></thead><tbody><tr><td>RNF01</td><td>Portabilidade</td><td>Rodar em desktop Python e em navegador via Pygbag.</td></tr><tr><td>RNF02</td><td>Desempenho</td><td>Evitar desenhar entidades fora da câmera e usar buckets para tiles/colisões.</td></tr><tr><td>RNF03</td><td>Manutenibilidade</td><td>Separar dados de armas, receitas, inventário e mapas em módulos dedicados.</td></tr><tr><td>RNF04</td><td>Compatibilidade de áudio</td><td>Utilizar OGG para simplificar desktop e web.</td></tr><tr><td>RNF05</td><td>Usabilidade</td><td>Fornecer controles por teclado/mouse e controle, além de tutorial e mensagens.</td></tr><tr><td>RNF06</td><td>Persistência resiliente</td><td>Adaptar save para filesystem no desktop e storage do navegador na web.</td></tr><tr><td>RNF07</td><td>Escalabilidade de conteúdo</td><td>Permitir novos mapas TMJ e assets sem reescrever o carregador principal.</td></tr></tbody></table><h2>3.3 Regras de negócio de gameplay</h2><ul><li>O jogador possui vida, fome e stamina; a stamina limita corrida e se recupera com o tempo.</li><li>Consumíveis como comida e kit médico recuperam necessidades específicas.</li><li>Armas de fogo dependem de munição correspondente, salvo código de munição infinita existente no projeto.</li><li>Receitas podem ser bloqueadas até que armas relacionadas estejam no inventário.</li><li>Zumbis mortos podem permanecer como corpos pesquisáveis antes de desaparecerem.</li><li>Bosses têm comportamento especial e conclusão própria de fase.</li><li>Gatilhos de mapa são derivados de camadas do Tiled, reduzindo acoplamento entre mapa e código.</li></ul></section><section class="section" id="s-4arquitetura-do-sistema"><h1>4 Arquitetura do sistema</h1><p>A arquitetura é centralizada por uma classe Game, responsável por orquestrar estados, entrada, atualização, renderização e integração entre os demais módulos. Essa escolha é comum em jogos Pygame de porte acadêmico porque o loop principal precisa coordenar muitos dados a cada frame. Os módulos auxiliares encapsulam dados e comportamentos de domínio para reduzir a complexidade direta do arquivo principal.</p><figure class="diagram"><img src="assets/diagrama-arquitetura.svg" alt="Diagrama geral de arquitetura e dependências lógicas do projeto."><figcaption>Diagrama geral de arquitetura e dependências lógicas do projeto.</figcaption></figure><h2>4.1 Visão por módulos</h2><table class="appendix-table"><thead><tr><th>Módulo</th><th>Linhas</th><th>Classes</th><th>Funções livres</th><th>Constantes</th><th>Responsabilidade</th></tr></thead><tbody><tr><td>crafting.py</td><td>74</td><td>1</td><td>0</td><td>0</td><td>Sistema de receitas, validação de recursos, desbloqueio por posse de armas e produção de itens.</td></tr><tr><td>inventory.py</td><td>59</td><td>1</td><td>0</td><td>0</td><td>Estrutura simples de armazenamento de itens, munições e armas, com operações de adicionar/remover/consultar.</td></tr><tr><td>main.py</td><td>4787</td><td>7</td><td>14</td><td>84</td><td>Núcleo do jogo: inicialização, loop, estados de menu/jogo, renderização, entrada, combate, loot, bosses, UI, transições e áudio.</td></tr><tr><td>map_loader.py</td><td>402</td><td>5</td><td>0</td><td>10</td><td>Leitura de mapas Tiled, tilesets TSX, layers, colisões, pontos de busca e gatilhos de porta/teleporte.</td></tr><tr><td>player.py</td><td>510</td><td>1</td><td>0</td><td>9</td><td>Entidade do jogador, animações compostas por loadout, movimentação, dano, cura, fome, stamina e estado de morte.</td></tr><tr><td>save_system.py</td><td>76</td><td>0</td><td>4</td><td>1</td><td>Persistência em JSON no desktop e localStorage no navegador WebAssembly.</td></tr><tr><td>weapons.py</td><td>93</td><td>0</td><td>0</td><td>1</td><td>Tabela declarativa de armas, munições, dano, alcance, cooldown, dispersão e efeitos especiais.</td></tr><tr><td>zombie.py</td><td>662</td><td>1</td><td>0</td><td>19</td><td>Entidade dos inimigos, variantes, animação, ataques corpo a corpo, arremesso de machado, efeitos e comportamento de perseguição.</td></tr></tbody></table><h2>4.2 Classes principais</h2><table class="appendix-table"><thead><tr><th>Módulo</th><th>Classe</th><th>Linha</th><th>Métodos</th><th>Resumo dos métodos</th></tr></thead><tbody><tr><td>crafting.py</td><td>CraftingSystem</td><td>8</td><td>4</td><td>is_recipe_unlocked, craft, get_recipe_names, get_recipe</td></tr><tr><td>inventory.py</td><td>Inventory</td><td>6</td><td>6</td><td>__init__, add_item, remove_item, get_quantity, has_items, to_dict</td></tr><tr><td>main.py</td><td>Decoration</td><td>740</td><td>3</td><td>__init__, _create_sprite, draw</td></tr><tr><td>main.py</td><td>SearchNode</td><td>781</td><td>3</td><td>__init__, search, draw</td></tr><tr><td>main.py</td><td>MapTrigger</td><td>848</td><td>1</td><td>__init__</td></tr><tr><td>main.py</td><td>ShotImpact</td><td>855</td><td>4</td><td>__init__, update, is_finished, draw</td></tr><tr><td>main.py</td><td>AxeProjectile</td><td>904</td><td>6</td><td>__init__, _direction_name, update, is_finished, can_damage_player, draw</td></tr><tr><td>main.py</td><td>FloatingPopup</td><td>955</td><td>4</td><td>__init__, update, is_finished, draw</td></tr><tr><td>main.py</td><td>Game</td><td>1009</td><td>203</td><td>__init__, _present_frame, _build_menu_title_layers, _first_existing_path, _available_normal_maps, _is_boss_map_path, _available_boss_maps, _boss_loop_level, _next_boss_key, _next_boss_map_path, _boss_stats_for_map, _is_summoner_boss_active, _choose_random_normal_map, _normal_map_index, _boss_is_alive, _boss_enemies, _is_boss_enemy, _is_horde_map ...</td></tr><tr><td>map_loader.py</td><td>SearchNodeSpawn</td><td>37</td><td>0</td><td></td></tr><tr><td>map_loader.py</td><td>MapTriggerSpawn</td><td>45</td><td>0</td><td></td></tr><tr><td>map_loader.py</td><td>TileSet</td><td>52</td><td>2</td><td>lastgid, contains</td></tr><tr><td>map_loader.py</td><td>TileLayer</td><td>75</td><td>0</td><td></td></tr><tr><td>map_loader.py</td><td>TiledMap</td><td>80</td><td>14</td><td>__init__, _load_tilesets, _resolve_tileset_path, _resolve_image_path, _load_tileset_image, _load_layers, _build_draw_buckets, _get_tile_surface, _find_tileset, _is_solid_layer, _make_search_nodes, _make_trigger_spawns, _collect_cluster, draw</td></tr><tr><td>player.py</td><td>Player</td><td>78</td><td>34</td><td>__init__, _load_sprites, _load_loadout_sprites, _compose_weapon_loadout, _compose_frame, _tint_weapon_layers, _tint_sprite, _load_spritesheet, _resolve_frame_count, move, clamp_to_area, set_position, aim_at, take_damage, heal, restore_hunger, start_attack_animation, start_pickup_animation ...</td></tr><tr><td>zombie.py</td><td>Zombie</td><td>58</td><td>37</td><td>__post_init__, _load_sprites, _load_spritesheet, _direction_from_vector, _sprite_color_overlay, _flash_sprite, _available_animation, _animation_key, _current_frames, _current_sprite, _shadow_surface, _scaled_surface, _has_animation, _choose_attack_variant, _can_start_lunge, _start_attack, _start_retreat, _set_state ...</td></tr></tbody></table><h2>4.3 Agrupamento técnico dos métodos da classe Game</h2><p>Como a classe Game é a coordenadora do projeto, seus métodos foram agrupados por responsabilidade para facilitar leitura e manutenção. Essa tabela complementa o inventário completo do apêndice e mostra a intenção arquitetural por trás da concentração do loop principal.</p><table class="appendix-table"><thead><tr><th>Grupo</th><th>Métodos representativos</th><th>Responsabilidade</th></tr></thead><tbody><tr><td>Configuração e áudio</td><td>_load_settings, _save_settings, _apply_audio_settings, _load_sfx, _play_music</td><td>Carrega preferências, aplica volumes, inicializa efeitos e alterna música de menu, jogo e boss.</td></tr><tr><td>Mundo e mapas</td><td>_load_tiled_world, _switch_to_tiled_map, _enter_random_interior, _leave_interior, _use_map_exit</td><td>Resolve mapas TMJ, preserva estado externo, troca áreas e sincroniza gatilhos de portas e teletransportes.</td></tr><tr><td>Entrada e menus</td><td>process_input, process_menu_input, _apply_gamepad_input, _handle_main_menu_action</td><td>Converte eventos de teclado, mouse e controle em ações de jogo ou navegação de interface.</td></tr><tr><td>Inimigos e bosses</td><td>_spawn_zombie, _create_boss_zombie, _update_zombies, _update_boss_phase, _summon_boss_wave</td><td>Gera inimigos, atualiza IA, controla bosses, ondas, minions e condições de derrota.</td></tr><tr><td>Interação e loot</td><td>_handle_search, _corpse_loot_rewards, _grant_rewards, _add_item_popups</td><td>Processa busca em nós/corpos, sorteia recompensas e apresenta feedback visual e sonoro.</td></tr><tr><td>Combate</td><td>_handle_attack, _attack_melee, _fire_gun, _find_shot_hits, _damage_zombie, _apply_weapon_status</td><td>Centraliza cooldowns, dano, munição, projéteis, impacto, fogo, gelo e morte de zumbis.</td></tr><tr><td>Interface</td><td>_draw_ui, _draw_inventory_panel, _draw_crafting_panel, _draw_quick_access_bar, _draw_ammo_indicator</td><td>Renderiza HUD, painéis, atalhos, munição, barras e mensagens do jogo.</td></tr><tr><td>Colisão e câmera</td><td>_resolve_player_collisions, _resolve_zombie_obstacles, _separate_zombies, _update_camera</td><td>Mantém jogador/inimigos dentro do mundo, evita obstáculos e posiciona a câmera.</td></tr></tbody></table><h2>4.4 Loop principal</h2><p>O loop principal fica no método run da classe Game e mantém a cadência de atualização. Em cada iteração, o jogo processa entrada, atualiza estado, renderiza o frame e apresenta o resultado. A constante TARGET_FPS diferencia desktop e web, usando 60 FPS localmente e 45 FPS na web para reduzir custo de renderização no canvas WebAssembly.</p><pre class="code"><code>4767 |     async def run(self) -&gt; None:
+4768 |         while self.is_game_running:
+4769 |             dt = self.clock.tick(TARGET_FPS) / 1000.0
+4770 |             if IS_WEB:
+4771 |                 await asyncio.sleep(0)
+4772 |             if self._screen_state == &quot;playing&quot;:
+4773 |                 direction, running, craft_pressed, search_pressed, attack_pressed, heal_pressed = self.process_input()
+4774 |                 self.update_game_state(direction, running, craft_pressed, search_pressed, attack_pressed, heal_pressed, dt)
+4775 |                 self.render(dt)
+4776 |             else:
+4777 |                 self.process_menu_input()
+4778 |                 self.render_menu(dt)
+4779 |         pygame.quit()
+4780 | 
+4781 | 
+4782 | async def main() -&gt; None:
+4783 |     await Game().run()
+4784 | 
+4785 | 
+4786 | if __name__ == &quot;__main__&quot;:
+4787 |     asyncio.run(main())</code></pre><div class="tech-note"><p class="no-indent"><strong>Leitura técnica do loop</strong></p><ul><li>process_input isola a interpretação de eventos antes da atualização de mundo.</li><li>update_game_state aplica regras dependentes do tempo, como inimigos, fome, stamina, projéteis e interações.</li><li>render desenha o frame final em uma surface interna antes da apresentação pela janela ou canvas web.</li><li>clock.tick(TARGET_FPS) limita a taxa de quadros e fornece delta time para movimento proporcional ao tempo real.</li></ul></div><h2>4.5 Estados de aplicação</h2><p>O estado de aplicação alterna entre menu, jogo, painéis e condições especiais como tutorial, inventário, crafting e morte. A separação de métodos de entrada e renderização por contexto reduz conflitos: menus usam process_menu_input e render_menu; jogo usa process_input, update_game_state e render; painéis bloqueiam parcialmente gameplay por meio de checagens específicas.</p></section><section class="section" id="s-5modelagem-de-dados-e-assets"><h1>5 Modelagem de dados e assets</h1><p>O projeto utiliza dados em diferentes níveis: dados declarativos em Python para armas e receitas, dados espaciais em mapas TMJ/TSX, dados visuais em PNG, áudio em OGG e dados persistidos em JSON/localStorage. Essa combinação permite que regras e conteúdo sejam alterados sem que toda a lógica precise ser reescrita.</p><h2>5.1 Mapas e camadas</h2><table class="appendix-table"><thead><tr><th>Mapa</th><th>Dimensão em tiles</th><th>Tile</th><th>Tilesets</th><th>Camadas</th></tr></thead><tbody><tr><td>Boss 1.tmj</td><td>30x30</td><td>16x16</td><td>8</td><td>Ground, Decor, Nature, Teleport</td></tr><tr><td>Boss 2.tmj</td><td>30x30</td><td>16x16</td><td>4</td><td>Ground, Decor, Nature, Teleport</td></tr><tr><td>Boss 3.tmj</td><td>30x30</td><td>16x16</td><td>4</td><td>Ground, Decor, Nature, Teleport</td></tr><tr><td>interior 1.1.tmj</td><td>10x8</td><td>16x16</td><td>3</td><td>Ground, Walls, Decor, Loot</td></tr><tr><td>Interior 1.tmj</td><td>10x8</td><td>16x16</td><td>4</td><td>Ground, Walls, Decor, Loot</td></tr><tr><td>Mapa 1.1.tmj</td><td>50x30</td><td>16x16</td><td>11</td><td>Ground, Buildigns, Portas, Decor, Colliders, Nature, Cars, Teleport</td></tr><tr><td>Mapa 1.tmj</td><td>50x30</td><td>16x16</td><td>11</td><td>Ground, Buildigns, Portas, Decor, Colliders, Nature, Cars, Teleport</td></tr><tr><td>Mapa 2.tmj</td><td>50x30</td><td>16x16</td><td>6</td><td>Ground, Buildigns, Portas, Decor, Nature, Cars, Teleport</td></tr><tr><td>Mapa 3.tmj</td><td>50x30</td><td>16x16</td><td>4</td><td>Ground, Nature, Decor, Cars, Teleport</td></tr><tr><td>Mapa 4.tmj</td><td>50x30</td><td>16x16</td><td>13</td><td>Ground, Buildigns, Portas, Nature, Decor, Cars, Teleport</td></tr></tbody></table><p>As camadas dos mapas possuem papel semântico. Nomes contendo collision, solid, objects, building, wall ou car geram retângulos de colisão. Camadas Nature, Loot e Cars geram pontos de busca. Camadas Portas/Door geram transições de porta, enquanto Teleport gera saídas entre mapas ou arenas.</p><h2>5.2 Visualização dos mapas</h2><p>As figuras a seguir apresentam apenas a renderização visual dos mapas principais do jogo. A visualização técnica com sobreposição de colisões foi removida desta versão para evitar repetição visual e dar espaço a todos os cenários principais: bosses, interior e mapas externos.</p><div class="map-grid"><figure class=""><img src="assets/mapa-boss-1.png" alt="Renderização do mapa Boss 1.tmj."><figcaption>Renderização do mapa Boss 1.tmj.</figcaption></figure><figure class=""><img src="assets/mapa-boss-2.png" alt="Renderização do mapa Boss 2.tmj."><figcaption>Renderização do mapa Boss 2.tmj.</figcaption></figure><figure class=""><img src="assets/mapa-boss-3.png" alt="Renderização do mapa Boss 3.tmj."><figcaption>Renderização do mapa Boss 3.tmj.</figcaption></figure><figure class=""><img src="assets/mapa-interior-1.png" alt="Renderização do mapa Interior 1.tmj."><figcaption>Renderização do mapa Interior 1.tmj.</figcaption></figure><figure class=""><img src="assets/mapa-mapa-1.png" alt="Renderização do mapa Mapa 1.tmj."><figcaption>Renderização do mapa Mapa 1.tmj.</figcaption></figure><figure class=""><img src="assets/mapa-mapa-2.png" alt="Renderização do mapa Mapa 2.tmj."><figcaption>Renderização do mapa Mapa 2.tmj.</figcaption></figure><figure class=""><img src="assets/mapa-mapa-3.png" alt="Renderização do mapa Mapa 3.tmj."><figcaption>Renderização do mapa Mapa 3.tmj.</figcaption></figure><figure class=""><img src="assets/mapa-mapa-4.png" alt="Renderização do mapa Mapa 4.tmj."><figcaption>Renderização do mapa Mapa 4.tmj.</figcaption></figure></div><h2>5.3 Sprites e UI</h2><p>Os sprites são organizados por categoria: personagem, armas, zumbis, objetos, UI e pacote visual pós-apocalíptico. O carregamento de spritesheets extrai frames por contagem declarada no nome do arquivo, o que simplifica adicionar novas animações desde que o padrão de nome seja preservado.</p><figure class=""><img src="assets/showcase-sprites.png" alt="Amostra de sprites e elementos de interface carregados do repositório."><figcaption>Amostra de sprites e elementos de interface carregados do repositório.</figcaption></figure><h2>5.4 Inventário base</h2><table class="appendix-table"><thead><tr><th>Item</th><th>Quantidade inicial</th></tr></thead><tbody><tr><td>madeira</td><td>0</td></tr><tr><td>metal</td><td>0</td></tr><tr><td>comida</td><td>0</td></tr><tr><td>pano</td><td>0</td></tr><tr><td>erva</td><td>0</td></tr><tr><td>kit_medico</td><td>0</td></tr><tr><td>polvora</td><td>0</td></tr><tr><td>balas</td><td>0</td></tr><tr><td>balas_incendiarias</td><td>0</td></tr><tr><td>balas_perfurantes</td><td>0</td></tr><tr><td>cartuchos</td><td>0</td></tr><tr><td>cartuchos_incendiarios</td><td>0</td></tr><tr><td>maos</td><td>1</td></tr><tr><td>taco</td><td>0</td></tr><tr><td>pistola</td><td>0</td></tr><tr><td>pistola_incendiaria</td><td>0</td></tr><tr><td>pistola_perfurante</td><td>0</td></tr><tr><td>escopeta</td><td>0</td></tr><tr><td>escopeta_incendiaria</td><td>0</td></tr></tbody></table><h2>5.5 Receitas de crafting</h2><table class="appendix-table"><thead><tr><th>Item produzido</th><th>Custo</th><th>Quantidade</th><th>Desbloqueio</th></tr></thead><tbody><tr><td>taco</td><td>madeira: 3</td><td>1</td><td>-</td></tr><tr><td>comida</td><td>erva: 1, madeira: 1</td><td>1</td><td>-</td></tr><tr><td>balas</td><td>metal: 1, polvora: 1</td><td>6</td><td>-</td></tr><tr><td>cartuchos</td><td>metal: 2, polvora: 1</td><td>3</td><td>escopeta, escopeta_incendiaria</td></tr><tr><td>balas_incendiarias</td><td>balas: 4, polvora: 1</td><td>4</td><td>pistola_incendiaria</td></tr><tr><td>balas_perfurantes</td><td>balas: 4, metal: 2</td><td>4</td><td>pistola_perfurante</td></tr><tr><td>cartuchos_incendiarios</td><td>cartuchos: 2, polvora: 1</td><td>2</td><td>escopeta_incendiaria</td></tr><tr><td>kit_medico</td><td>pano: 2, erva: 2</td><td>1</td><td>-</td></tr></tbody></table><h2>5.6 Tabela de armas</h2><table class="appendix-table"><thead><tr><th>Arma</th><th>Família</th><th>Dano</th><th>Alcance</th><th>Cooldown</th><th>Munição</th><th>Projéteis</th><th>Efeito</th></tr></thead><tbody><tr><td>maos</td><td>melee</td><td>8</td><td>28</td><td>0.45</td><td>-</td><td>-</td><td>-</td></tr><tr><td>taco</td><td>melee</td><td>20</td><td>50</td><td>0.5</td><td>-</td><td>-</td><td>-</td></tr><tr><td>pistola</td><td>pistola</td><td>38</td><td>460</td><td>0.35</td><td>balas</td><td>1</td><td>-</td></tr><tr><td>pistola_incendiaria</td><td>pistola</td><td>30</td><td>430</td><td>0.42</td><td>balas_incendiarias</td><td>1</td><td>fire</td></tr><tr><td>pistola_perfurante</td><td>pistola</td><td>34</td><td>520</td><td>0.48</td><td>balas_perfurantes</td><td>1</td><td>ice</td></tr><tr><td>escopeta</td><td>escopeta</td><td>80</td><td>260</td><td>0.85</td><td>cartuchos</td><td>5</td><td>-</td></tr><tr><td>escopeta_incendiaria</td><td>escopeta</td><td>58</td><td>235</td><td>1.0</td><td>cartuchos_incendiarios</td><td>4</td><td>fire</td></tr></tbody></table></section><section class="section" id="s-6implementação-dos-sistemas-principais"><h1>6 Implementação dos sistemas principais</h1><h2>6.1 Carregamento de mapas</h2><p>O carregador TiledMap lê arquivos JSON TMJ, resolve tilesets externos TSX, carrega imagens, aplica flips horizontais e verticais do Tiled e gera surfaces escaladas. Para desempenho, tiles são armazenados em cache por GID e buckets de desenho agrupam elementos por região, evitando percorrer o mapa inteiro a cada frame.</p><pre class="code"><code>  80 | class TiledMap:
+  81 |     def __init__(self, map_path: str | Path, scale: int = 2) -&gt; None:
+  82 |         self.path = Path(map_path)
+  83 |         self.scale = max(1, int(scale))
+  84 |         data = json.loads(self.path.read_text(encoding=&quot;utf-8&quot;))
+  85 | 
+  86 |         self.tile_width = int(data[&quot;tilewidth&quot;])
+  87 |         self.tile_height = int(data[&quot;tileheight&quot;])
+  88 |         self.width_tiles = int(data[&quot;width&quot;])
+  89 |         self.height_tiles = int(data[&quot;height&quot;])
+  90 |         self.render_tile_width = self.tile_width * self.scale
+  91 |         self.render_tile_height = self.tile_height * self.scale
+  92 |         self.world_width = self.width_tiles * self.render_tile_width
+  93 |         self.world_height = self.height_tiles * self.render_tile_height
+  94 | 
+  95 |         self.tilesets = self._load_tilesets(data.get(&quot;tilesets&quot;, []))
+  96 |         self._tile_cache: dict[tuple[int, bool, bool], pygame.Surface] = {}
+  97 |         self.layers: list[TileLayer] = []
+  98 |         self._layer_tile_buckets: list[dict[tuple[int, int], tuple[tuple[int, int, pygame.Surface], ...]]] = []
+  99 |         self._max_tile_width = self.render_tile_width
+ 100 |         self._max_tile_height = self.render_tile_height
+ 101 |         self.collision_rects: list[pygame.Rect] = []
+ 102 |         self.search_nodes: list[SearchNodeSpawn] = []
+ 103 |         self.door_triggers: list[MapTriggerSpawn] = []
+ 104 |         self.exit_triggers: list[MapTriggerSpawn] = []
+ 105 |         self.unrendered_tiles_by_layer: dict[str, int] = {}
+ 106 | 
+ 107 |         self._load_layers(data.get(&quot;layers&quot;, []))
+ 108 |         self._build_draw_buckets()
+ 109 | 
+ 110 |     def _load_tilesets(self, tileset_refs: Iterable[dict]) -&gt; list[TileSet]:
+ 111 |         tilesets: list[TileSet] = []
+ 112 |         for tileset_ref in tileset_refs:
+ 113 |             source = tileset_ref.get(&quot;source&quot;)</code></pre><div class="tech-note"><p class="no-indent"><strong>Documentação do trecho</strong></p><ul><li>O construtor transforma metadados do Tiled em medidas de mundo usadas pela câmera e colisão.</li><li>self.tilesets mantém os tilesets resolvidos por firstgid, preservando compatibilidade com mapas exportados pelo Tiled.</li><li>self.collision_rects, self.search_nodes, self.door_triggers e self.exit_triggers são produtos técnicos das layers.</li><li>A chamada _build_draw_buckets prepara o mapa para renderização parcial por região visível.</li></ul></div><p>A criação de pontos de busca e gatilhos usa clusters de tiles ocupados. Em vez de criar um ponto por tile, o carregador agrupa tiles adjacentes, calcula o centro médio e registra um spawn técnico. Isso reduz ruído de interação e torna as camadas do Tiled mais intuitivas.</p><pre class="code"><code> 306 |         normalized = layer_name.lower()
+ 307 |         if normalized == &quot;nature&quot;:
+ 308 |             node_type = &quot;natureza&quot;
+ 309 |         else:
+ 310 |             node_type = SEARCH_NODE_LAYERS.get(normalized)
+ 311 |         if node_type is None:
+ 312 |             return []
+ 313 | 
+ 314 |         nodes: list[SearchNodeSpawn] = []
+ 315 |         seen: set[tuple[int, int]] = set()
+ 316 |         for start in occupied_tiles:
+ 317 |             if start in seen:
+ 318 |                 continue
+ 319 |             cluster = self._collect_cluster(start, occupied_tiles, seen)
+ 320 |             if not cluster:
+ 321 |                 continue
+ 322 | 
+ 323 |             avg_x = sum(tile[0] for tile in cluster) / len(cluster)
+ 324 |             avg_y = sum(tile[1] for tile in cluster) / len(cluster)
+ 325 |             nodes.append(
+ 326 |                 SearchNodeSpawn(
+ 327 |                     node_type=node_type,
+ 328 |                     position=(
+ 329 |                         int((avg_x + 0.5) * self.render_tile_width),
+ 330 |                         int((avg_y + 0.5) * self.render_tile_height),
+ 331 |                     ),
+ 332 |                 )
+ 333 |             )
+ 334 |         return nodes
+ 335 | 
+ 336 |     def _make_trigger_spawns(self, layer_name: str, occupied_tiles: set[tuple[int, int]]) -&gt; list[MapTriggerSpawn]:
+ 337 |         trigger_type = TRIGGER_LAYER_TYPES.get(layer_name.lower())
+ 338 |         if trigger_type is None:
+ 339 |             return []
+ 340 | 
+ 341 |         triggers: list[MapTriggerSpawn] = []</code></pre><div class="tech-note"><p class="no-indent"><strong>Contrato de camadas</strong></p><ul><li>Nature vira ponto de busca de natureza.</li><li>Loot vira despensa e Cars vira carro, ambos como SearchNodeSpawn.</li><li>Portas/Door vira gatilho de porta e Teleport vira gatilho de saída.</li><li>Clusters adjacentes evitam múltiplos prompts de interação sobre o mesmo objeto visual.</li></ul></div><h2>6.2 Jogador</h2><p>A classe Player concentra atributos vitais e cinemáticos: vida, fome, stamina, posição, arma atual, velocidade base, velocidade de corrida, cooldowns e estado de animação. O movimento usa vetores Pygame, normalização de direção e atualização por delta time, permitindo comportamento independente da taxa de quadros.</p><pre class="code"><code>  78 | class Player:
+  79 |     SPRITE_SCALE: ClassVar[int] = 3
+  80 |     _sprite_cache: ClassVar[dict[str, dict[str, dict[str, list[pygame.Surface]]]]] = {}
+  81 |     _shadow_cache: ClassVar[dict[tuple[int, int], pygame.Surface]] = {}
+  82 | 
+  83 |     def __init__(self, position: Tuple[float, float]) -&gt; None:
+  84 |         self.max_health: int = 100
+  85 |         self.max_hunger: float = 100.0
+  86 |         self.player_health: int = 100
+  87 |         self.player_hunger: float = 100.0
+  88 |         self.player_stamina: float = 100.0
+  89 |         self.player_position: Tuple[float, float] = position
+  90 |         self.current_weapon: str = &quot;maos&quot;
+  91 | 
+  92 |         self._pos = pygame.Vector2(position)
+  93 |         self.facing_direction = pygame.Vector2(1, 0)
+  94 |         self.radius = 14
+  95 |         self.base_speed = 140.0
+  96 |         self.run_speed = 210.0
+  97 |         self.stamina_recovery = 18.0
+  98 |         self.stamina_cost = 28.0
+  99 |         self._damage_cooldown = 0.0
+ 100 |         self.hit_flash_timer = 0.0
+ 101 |         self.heal_flash_timer = 0.0
+ 102 |         self.attack_animation_timer = 0.0
+ 103 |         self._is_moving = False
+ 104 |         self._is_running = False
+ 105 |         self._state = &quot;idle&quot;
+ 106 |         self._animation_time = 0.0
+ 107 |         self._pickup_timer = 0.0
+ 108 |         self._death_variant = &quot;death_1&quot;
+ 109 |         self._death_finished = False
+ 110 |         self._load_sprites()
+ 111 | 
+ 112 |     @classmethod</code></pre><div class="tech-note"><p class="no-indent"><strong>Responsabilidades do Player</strong></p><ul><li>Armazena estado vital do personagem e mantém posição em pygame.Vector2.</li><li>Controla velocidade base, corrida, consumo e recuperação de stamina.</li><li>Gerencia timers de dano, cura, ataque, coleta e animação de morte.</li><li>Expõe métodos de movimentação, dano, cura, mira e desenho usados pelo Game.</li></ul></div><p>O sistema de sprites do jogador combina corpo e camadas de armas. Isso permite que o mesmo corpo seja reaproveitado com mãos, taco, pistola e escopeta, reduzindo duplicação visual. Variações especiais de armas recebem tintura aplicada sobre as camadas correspondentes.</p><h2>6.3 Inimigos e IA</h2><p>A classe Zombie é uma dataclass com atributos de posição, velocidade, vida, raio, tipo, dano, alcance, timers e flags de ataque. O projeto implementa variantes axe, small e big, cada uma com sprites e comportamento próprio. O zumbi pequeno possui investida e recuo; o zumbi com machado pode arremessar projétil dentro de uma faixa de distância; bosses usam estatísticas e regras próprias criadas pela classe Game.</p><pre class="code"><code>  58 | class Zombie:
+  59 |     position: pygame.Vector2
+  60 |     speed: float
+  61 |     health: int = 30
+  62 |     radius: int = 12
+  63 |     zombie_type: str = &quot;axe&quot;
+  64 |     sprite_scale: float = 1.0
+  65 |     attack_damage: int = 10
+  66 |     attack_range: float = 34.0
+  67 |     can_throw_axe: bool = False
+  68 |     hit_flash_timer: float = 0.0
+  69 |     animation_time: float = 0.0
+  70 |     max_health: int = field(default=30, init=False)
+  71 |     burn_timer: float = field(default=0.0, init=False)
+  72 |     burn_damage_per_second: float = field(default=0.0, init=False)
+  73 |     burn_tick_timer: float = field(default=0.0, init=False)
+  74 |     freeze_timer: float = field(default=0.0, init=False)
+  75 |     facing_direction: str = field(default=&quot;down&quot;, init=False, repr=False)
+  76 |     loot_given: bool = field(default=False, init=False)
+  77 |     corpse_timer: float = field(default=18.0, init=False)
+  78 |     corpse_searched: bool = field(default=False, init=False)
+  79 |     _is_moving: bool = field(default=False, init=False, repr=False)
+  80 |     _state: str = field(default=&quot;idle&quot;, init=False, repr=False)
+  81 |     _attack_variant: str = field(default=&quot;attack_1&quot;, init=False, repr=False)
+  82 |     _death_variant: str = field(default=&quot;death_1&quot;, init=False, repr=False)
+  83 |     _death_finished: bool = field(default=False, init=False, repr=False)
+  84 |     _attack_has_hit: bool = field(default=False, init=False, repr=False)
+  85 |     _attack_started: bool = field(default=False, init=False, repr=False)
+  86 |     _ranged_attack_fired: bool = field(default=False, init=False, repr=False)
+  87 |     _attack_start_position: pygame.Vector2 = field(default_factory=pygame.Vector2, init=False, repr=False)
+  88 |     _attack_target_position: pygame.Vector2 = field(default_factory=pygame.Vector2, init=False, repr=False)
+  89 |     _retreat_timer: float = field(default=0.0, init=False, repr=False)
+  90 | 
+  91 |     ATTACK_RANGE: ClassVar[float] = 34.0
+  92 |     _sprite_cache: ClassVar[dict[str, dict[str, dict[str, list[pygame.Surface]]]]] = {}
+  93 |     _shadow_cache: ClassVar[dict[tuple[int, int], pygame.Surface]] = {}
+  94 |     _scaled_sprite_cache: ClassVar[dict[tuple[int, float], pygame.Surface]] = {}
+  95 | 
+  96 |     def __post_init__(self) -&gt; None:
+  97 |         self.position = pygame.Vector2(self.position)
+  98 |         self.max_health = max(1, int(self.health))
+  99 |         self.attack_damage = max(1, int(self.attack_damage))
+ 100 |         self.attack_range = max(1.0, float(self.attack_range))
+ 101 |         self.sprite_scale = max(0.25, float(self.sprite_scale))
+ 102 |         if self.zombie_type not in ZOMBIE_TYPES:</code></pre><div class="tech-note"><p class="no-indent"><strong>Responsabilidades do Zombie</strong></p><ul><li>Representa inimigos comuns e variantes usadas como base para bosses.</li><li>Controla estados de animação como idle, walk, attack, retreat e dead.</li><li>Usa timers internos para impedir dano contínuo sem janela de ataque.</li><li>Armazena efeitos temporários como burn_timer e freeze_timer para munições especiais.</li></ul></div><p>A IA evita atravessar obstáculos por resolução de colisões e também aplica separação entre zumbis para reduzir sobreposição visual. A atualização dos inimigos conversa com o estado do mapa, a posição do jogador, efeitos de fogo e gelo, morte, loot de corpo e eventos sonoros.</p><h2>6.4 Combate</h2><p>O combate é dividido em melee e armas de fogo. Armas melee usam alcance circular/retangular próximo ao jogador. Armas de fogo usam dados declarativos da tabela WEAPONS, consomem munição específica, calculam dispersão e podem gerar múltiplos projéteis no caso da escopeta. Munições incendiárias aplicam dano em área e queimadura; munições perfurantes/congelantes aplicam efeito de gelo.</p><pre class="code"><code>   6 | WEAPONS: Dict[str, Dict[str, float | int | str | tuple[int, int, int]]] = {
+   7 |     &quot;maos&quot;: {&quot;family&quot;: &quot;melee&quot;, &quot;damage&quot;: 8, &quot;range&quot;: 28, &quot;cooldown&quot;: 0.45, &quot;ammo&quot;: 0},
+   8 |     &quot;taco&quot;: {&quot;family&quot;: &quot;melee&quot;, &quot;damage&quot;: 20, &quot;range&quot;: 50, &quot;cooldown&quot;: 0.5, &quot;ammo&quot;: 0},
+   9 |     &quot;pistola&quot;: {
+  10 |         &quot;family&quot;: &quot;pistola&quot;,
+  11 |         &quot;damage&quot;: 38,
+  12 |         &quot;range&quot;: 460,
+  13 |         &quot;cooldown&quot;: 0.35,
+  14 |         &quot;ammo&quot;: 1,
+  15 |         &quot;ammo_item&quot;: &quot;balas&quot;,
+  16 |         &quot;pellets&quot;: 1,
+  17 |         &quot;spread&quot;: 0,
+  18 |         &quot;hit_width&quot;: 4,
+  19 |         &quot;visible_rounds&quot;: 6,
+  20 |         &quot;projectile_color&quot;: (255, 224, 120),
+  21 |     },
+  22 |     &quot;pistola_incendiaria&quot;: {
+  23 |         &quot;family&quot;: &quot;pistola&quot;,
+  24 |         &quot;damage&quot;: 30,
+  25 |         &quot;range&quot;: 430,
+  26 |         &quot;cooldown&quot;: 0.42,
+  27 |         &quot;ammo&quot;: 1,
+  28 |         &quot;ammo_item&quot;: &quot;balas_incendiarias&quot;,
+  29 |         &quot;pellets&quot;: 1,
+  30 |         &quot;spread&quot;: 0,
+  31 |         &quot;hit_width&quot;: 5,
+  32 |         &quot;visible_rounds&quot;: 6,
+  33 |         &quot;projectile_color&quot;: (255, 112, 72),
+  34 |         &quot;effect&quot;: &quot;fire&quot;,
+  35 |         &quot;splash_radius&quot;: 54,
+  36 |         &quot;splash_damage&quot;: 12,
+  37 |         &quot;burn_duration&quot;: 3.2,
+  38 |         &quot;burn_dps&quot;: 7,
+  39 |     },
+  40 |     &quot;pistola_perfurante&quot;: {
+  41 |         &quot;family&quot;: &quot;pistola&quot;,
+  42 |         &quot;damage&quot;: 34,
+  43 |         &quot;range&quot;: 520,
+  44 |         &quot;cooldown&quot;: 0.48,
+  45 |         &quot;ammo&quot;: 1,
+  46 |         &quot;ammo_item&quot;: &quot;balas_perfurantes&quot;,
+  47 |         &quot;pellets&quot;: 1,
+  48 |         &quot;spread&quot;: 0,
+  49 |         &quot;hit_width&quot;: 3,
+  50 |         &quot;visible_rounds&quot;: 6,
+  51 |         &quot;projectile_color&quot;: (105, 190, 255),
+  52 |         &quot;effect&quot;: &quot;ice&quot;,
+  53 |         &quot;freeze_duration&quot;: 1.7,
+  54 |     },
+  55 |     &quot;escopeta&quot;: {</code></pre><div class="tech-note"><p class="no-indent"><strong>Como a tabela WEAPONS é usada</strong></p><ul><li>family define se a arma usa lógica melee, pistola ou escopeta.</li><li>damage, range e cooldown controlam dano, alcance e ritmo de ataque.</li><li>ammo_item define qual item do inventário será consumido no disparo.</li><li>pellets e spread permitem que a escopeta use múltiplas trajetórias no mesmo ataque.</li><li>effect ativa regras adicionais como fogo em área ou congelamento.</li></ul></div><p>A função _handle_attack decide quando um ataque pode ocorrer, respeitando cooldown e arma equipada. A partir dela, o fluxo chama _attack_melee ou _fire_gun, que aplicam dano, geram efeitos visuais e atualizam munição. Esse desenho centraliza a regra de entrada e distribui a aplicação conforme a família da arma.</p><h2>6.5 Inventário e crafting</h2><p>O inventário é intencionalmente simples: um dicionário de item para quantidade. Essa escolha funciona bem para um jogo de recursos empilháveis e facilita serialização. O crafting valida receita existente, bloqueio, recursos necessários, remoção dos custos e adição do item produzido.</p><pre class="code"><code>   6 | class Inventory:
+   7 |     def __init__(self, initial: Dict[str, int] | None = None) -&gt; None:
+   8 | 
+   9 |         defaults = {
+  10 |             &quot;madeira&quot;: 0,
+  11 |             &quot;metal&quot;: 0,
+  12 |             &quot;comida&quot;: 0,
+  13 |             &quot;pano&quot;: 0,
+  14 |             &quot;erva&quot;: 0,
+  15 |             &quot;kit_medico&quot;: 0,
+  16 |             &quot;polvora&quot;: 0,
+  17 |             &quot;balas&quot;: 0,
+  18 |             &quot;balas_incendiarias&quot;: 0,
+  19 |             &quot;balas_perfurantes&quot;: 0,
+  20 |             &quot;cartuchos&quot;: 0,
+  21 |             &quot;cartuchos_incendiarios&quot;: 0,
+  22 |             &quot;maos&quot;: 1,
+  23 |             &quot;taco&quot;: 0,
+  24 |             &quot;pistola&quot;: 0,
+  25 |             &quot;pistola_incendiaria&quot;: 0,
+  26 |             &quot;pistola_perfurante&quot;: 0,
+  27 |             &quot;escopeta&quot;: 0,
+  28 |             &quot;escopeta_incendiaria&quot;: 0,
+  29 |         }
+  30 |         self.inventory: Dict[str, int] = defaults
+  31 |         if initial:
+  32 |             self.inventory.update(initial)
+  33 |             if &quot;municao&quot; in initial and &quot;balas&quot; not in initial:
+  34 |                 self.inventory[&quot;balas&quot;] = int(initial[&quot;municao&quot;])
+  35 | 
+  36 |     def add_item(self, item: str, amount: int = 1) -&gt; None:
+  37 |         if amount &lt;= 0:
+  38 |             return
+  39 |         self.inventory[item] = self.inventory.get(item, 0) + amount
+  40 | 
+  41 |     def remove_item(self, item: str, amount: int = 1) -&gt; bool:
+  42 |         if amount &lt;= 0:
+  43 |             return True</code></pre><div class="tech-note"><p class="no-indent"><strong>Contrato do Inventory</strong></p><ul><li>add_item ignora quantidades negativas ou zero, evitando alteração inválida.</li><li>remove_item só altera o dicionário se houver saldo suficiente.</li><li>has_items é a função de validação usada pelo crafting antes de consumir recursos.</li><li>to_dict entrega uma cópia simples para save em JSON.</li></ul></div><pre class="code"><code>   8 | class CraftingSystem:
+   9 | 
+  10 |     crafting_recipes: Dict[str, Dict[str, object]] = {
+  11 |         &quot;taco&quot;: {&quot;cost&quot;: {&quot;madeira&quot;: 3}},
+  12 |         &quot;comida&quot;: {&quot;cost&quot;: {&quot;erva&quot;: 1, &quot;madeira&quot;: 1}, &quot;amount&quot;: 1},
+  13 |         &quot;balas&quot;: {&quot;cost&quot;: {&quot;metal&quot;: 1, &quot;polvora&quot;: 1}, &quot;amount&quot;: 6},
+  14 |         &quot;cartuchos&quot;: {&quot;cost&quot;: {&quot;metal&quot;: 2, &quot;polvora&quot;: 1}, &quot;amount&quot;: 3, &quot;unlock_any&quot;: [&quot;escopeta&quot;, &quot;escopeta_incendiaria&quot;]},
+  15 |         &quot;balas_incendiarias&quot;: {
+  16 |             &quot;cost&quot;: {&quot;balas&quot;: 4, &quot;polvora&quot;: 1},
+  17 |             &quot;amount&quot;: 4,
+  18 |             &quot;unlock&quot;: &quot;pistola_incendiaria&quot;,
+  19 |         },
+  20 |         &quot;balas_perfurantes&quot;: {
+  21 |             &quot;cost&quot;: {&quot;balas&quot;: 4, &quot;metal&quot;: 2},
+  22 |             &quot;amount&quot;: 4,
+  23 |             &quot;unlock&quot;: &quot;pistola_perfurante&quot;,
+  24 |         },
+  25 |         &quot;cartuchos_incendiarios&quot;: {
+  26 |             &quot;cost&quot;: {&quot;cartuchos&quot;: 2, &quot;polvora&quot;: 1},
+  27 |             &quot;amount&quot;: 2,
+  28 |             &quot;unlock&quot;: &quot;escopeta_incendiaria&quot;,
+  29 |         },
+  30 |         &quot;kit_medico&quot;: {&quot;cost&quot;: {&quot;pano&quot;: 2, &quot;erva&quot;: 2}},
+  31 |     }
+  32 | 
+  33 |     def is_recipe_unlocked(self, item_name: str, inventory: Inventory | None = None) -&gt; bool:
+  34 |         recipe = self.crafting_recipes.get(item_name)
+  35 |         if recipe is None:
+  36 |             return False
+  37 |         if inventory is None:
+  38 |             return &quot;unlock&quot; not in recipe and &quot;unlock_any&quot; not in recipe
+  39 | 
+  40 |         unlock = recipe.get(&quot;unlock&quot;)
+  41 |         if isinstance(unlock, str) and inventory.get_quantity(unlock) &lt;= 0:
+  42 |             return False
+  43 | 
+  44 |         unlock_any = recipe.get(&quot;unlock_any&quot;)
+  45 |         if isinstance(unlock_any, list) and not any(inventory.get_quantity(str(item)) &gt; 0 for item in unlock_any):
+  46 |             return False
+  47 | 
+  48 |         return True
+  49 | 
+  50 |     def craft(self, item_name: str, inventory: Inventory) -&gt; Tuple[bool, str]:
+  51 |         if item_name not in self.crafting_recipes:
+  52 |             return False, &quot;Receita inexistente.&quot;
+  53 |         if not self.is_recipe_unlocked(item_name, inventory):
+  54 |             return False, &quot;Receita ainda bloqueada.&quot;
+  55 | 
+  56 |         recipe = self.crafting_recipes[item_name]
+  57 |         recipe_cost = recipe[&quot;cost&quot;]</code></pre><div class="tech-note"><p class="no-indent"><strong>Contrato do CraftingSystem</strong></p><ul><li>is_recipe_unlocked bloqueia receitas avançadas até que o inventário possua o item necessário.</li><li>craft retorna uma tupla com sucesso e mensagem, facilitando feedback direto na UI.</li><li>Os custos são removidos antes da adição do produto, mantendo consistência de recursos.</li><li>get_recipe_names filtra dinamicamente o painel para mostrar apenas receitas disponíveis ao estado atual.</li></ul></div><h2>6.6 Save e configurações</h2><p>A persistência salva vida, fome, posição, inventário, tempo de jogo, arma atual e slots rápidos. No desktop, os dados são escritos em savegame.json; no navegador, a função detecta sys.platform igual a emscripten e grava no localStorage. A mesma API pública atende os dois ambientes.</p><pre class="code"><code>  24 | def save_game(
+  25 |     file_path: str,
+  26 |     player: Player,
+  27 |     inventory: Inventory,
+  28 |     game_time: float,
+  29 |     quick_slots: list[str] | None = None,
+  30 | ) -&gt; None:
+  31 |     data: Dict[str, Any] = {
+  32 |         &quot;player_health&quot;: player.player_health,
+  33 |         &quot;player_hunger&quot;: player.player_hunger,
+  34 |         &quot;player_position&quot;: list(player.player_position),
+  35 |         &quot;inventory&quot;: inventory.to_dict(),
+  36 |         &quot;game_time&quot;: game_time,
+  37 |         &quot;current_weapon&quot;: player.current_weapon,
+  38 |     }
+  39 |     if quick_slots is not None:
+  40 |         data[&quot;quick_slots&quot;] = list(quick_slots)
+  41 |     storage = _web_storage()
+  42 |     if storage is not None:
+  43 |         storage.setItem(WEB_SAVE_KEY, json.dumps(data))
+  44 |         return
+  45 | 
+  46 |     with open(file_path, &quot;w&quot;, encoding=&quot;utf-8&quot;) as file:
+  47 |         json.dump(data, file, indent=2)
+  48 | 
+  49 | 
+  50 | def load_game(file_path: str) -&gt; Dict[str, Any] | None:
+  51 |     storage = _web_storage()
+  52 |     if storage is not None:
+  53 |         raw_data = storage.getItem(WEB_SAVE_KEY)
+  54 |         if not raw_data:
+  55 |             return None
+  56 |         data = json.loads(str(raw_data))
+  57 |     else:
+  58 |         try:
+  59 |             with open(file_path, &quot;r&quot;, encoding=&quot;utf-8&quot;) as file:
+  60 |                 data = json.load(file)
+  61 |         except FileNotFoundError:
+  62 |             return None
+  63 | </code></pre><div class="tech-note"><p class="no-indent"><strong>Contrato do save</strong></p><ul><li>save_game recebe objetos Player e Inventory e converte apenas dados serializáveis.</li><li>load_game normaliza player_position para tupla ao restaurar JSON.</li><li>save_exists consulta localStorage na web e arquivo físico no desktop.</li><li>A chave WEB_SAVE_KEY evita conflito com outros dados do navegador.</li></ul></div><h2>6.7 Áudio</h2><p>O áudio é dividido entre música de menu, música de jogo, música de boss e efeitos sonoros. Os arquivos OGG são carregados a partir de audio/ e audio/sfx/. O volume de música e SFX é configurável, persistido em settings.json ou localStorage na web, e aplicado ao mixer do Pygame.</p><h2>6.8 Suporte a controle</h2><p>O jogo usa pygame.joystick e, quando disponível, pygame._sdl2.controller. Existem mapas de botões e eixos para controles SDL e controles crus, varredura periódica de gamepads, deadzone de eixos, analógico esquerdo para movimento, analógico direito para mira e botões dedicados para interagir, atacar, abrir inventário e alternar slots.</p></section><section class="section" id="s-7casos-de-uso-e-fluxos"><h1>7 Casos de uso e fluxos</h1><p>Os casos de uso descrevem interações observáveis entre jogador e sistema. Em jogos, um caso de uso frequentemente atravessa vários módulos: iniciar partida envolve menu, reset de estado, mapa e áudio; combater envolve entrada, jogador, arma, inimigo, colisão, áudio, UI e loot.</p><figure class="diagram"><img src="assets/diagrama-caso-de-uso.svg" alt="Diagrama UML de casos de uso do Dead Streets."><figcaption>Diagrama UML de casos de uso do Dead Streets.</figcaption></figure><table class="appendix-table"><thead><tr><th>Código</th><th>Caso de uso</th><th>Atores</th><th>Pré-condição</th><th>Pós-condição</th></tr></thead><tbody><tr><td>UC01</td><td>Iniciar novo jogo</td><td>Jogador</td><td>Selecionar Novo Jogo no menu</td><td>Estado reiniciado, mapa inicial carregado, inventário padrão disponível.</td></tr><tr><td>UC02</td><td>Carregar jogo salvo</td><td>Jogador</td><td>Existir save local ou localStorage</td><td>Jogador, inventário, arma atual e atalhos restaurados.</td></tr><tr><td>UC03</td><td>Explorar mapa</td><td>Jogador</td><td>Partida em andamento</td><td>Câmera acompanha jogador, colisões bloqueiam obstáculos, recursos podem ser encontrados.</td></tr><tr><td>UC04</td><td>Buscar loot</td><td>Jogador</td><td>Estar próximo de nó de busca/corpo</td><td>Inventário recebe recompensas e pode ocorrer emboscada.</td></tr><tr><td>UC05</td><td>Combater zumbis</td><td>Jogador e inimigos</td><td>Existirem inimigos vivos</td><td>Dano aplicado, munição consumida, morte gera corpo pesquisável e recompensas.</td></tr><tr><td>UC06</td><td>Craftar item</td><td>Jogador</td><td>Ter recursos e receita desbloqueada</td><td>Recursos são removidos e item produzido no inventário.</td></tr><tr><td>UC07</td><td>Trocar arma/atalho</td><td>Jogador</td><td>Possuir item ou arma</td><td>Slot rápido seleciona item ou equipa arma compatível.</td></tr><tr><td>UC08</td><td>Salvar partida</td><td>Jogador</td><td>Jogo em estado válido</td><td>Arquivo JSON ou localStorage atualizado.</td></tr><tr><td>UC09</td><td>Acessar interior/portal</td><td>Jogador</td><td>Estar dentro do raio do gatilho</td><td>Mapa atual é trocado mantendo estado externo quando necessário.</td></tr><tr><td>UC10</td><td>Derrotar boss</td><td>Jogador e bosses</td><td>Mapa de boss ativo</td><td>Boss removido, recompensas concedidas e progressão liberada.</td></tr></tbody></table><figure class=""><img src="assets/fluxo-de-novo-jogo.svg" alt="Fluxo principal de início de partida."><figcaption>Fluxo principal de início de partida.</figcaption></figure><figure class=""><img src="assets/fluxo-de-exploração-e-loot.svg" alt="Fluxo de exploração, busca e recompensa."><figcaption>Fluxo de exploração, busca e recompensa.</figcaption></figure><figure class=""><img src="assets/fluxo-de-combate.svg" alt="Fluxo de ataque e resolução de dano."><figcaption>Fluxo de ataque e resolução de dano.</figcaption></figure><figure class=""><img src="assets/fluxo-de-crafting.svg" alt="Fluxo de criação de itens por receita."><figcaption>Fluxo de criação de itens por receita.</figcaption></figure><figure class=""><img src="assets/fluxo-de-saveload.svg" alt="Fluxo de salvamento e carregamento."><figcaption>Fluxo de salvamento e carregamento.</figcaption></figure><h2>7.1 Fluxo de boss</h2><p>A progressão para bosses é controlada por sequência e contagem de mapas. Após determinado número de mapas normais, o jogo seleciona arena de boss. A derrota do boss concede recompensas, remove minions quando necessário e libera continuidade da partida. O terceiro boss utiliza comportamento de invocador, criando ondas que aumentam a pressão no jogador.</p></section><section class="section" id="s-8interface-experiência-e-controles"><h1>8 Interface, experiência e controles</h1><p>A interface combina elementos desenhados por código com sprites de UI. O menu principal apresenta ações, o HUD mostra vida, fome, stamina, munição, atalhos e mensagens, e os painéis de inventário/crafting organizam itens em células. A câmera segue o jogador no mundo, mantendo o foco na exploração e nos inimigos próximos.</p><h2>8.1 Controles de teclado e mouse</h2><table class=""><thead><tr><th>Ação</th><th>Entrada</th></tr></thead><tbody><tr><td>Mover</td><td>WASD</td></tr><tr><td>Correr</td><td>Shift</td></tr><tr><td>Mirar</td><td>Mouse</td></tr><tr><td>Atacar</td><td>Clique esquerdo ou Espaço</td></tr><tr><td>Interagir/buscar/porta</td><td>E</td></tr><tr><td>Usar consumível</td><td>Q</td></tr><tr><td>Crafting</td><td>B</td></tr><tr><td>Craftar selecionado</td><td>C</td></tr><tr><td>Alternar receita</td><td>Tab</td></tr><tr><td>Inventário</td><td>I</td></tr><tr><td>Atalhos</td><td>1 a 6</td></tr><tr><td>Salvar/carregar</td><td>F5/F9</td></tr><tr><td>Voltar/sair</td><td>Esc</td></tr></tbody></table><h2>8.2 Controles de gamepad</h2><table class=""><thead><tr><th>Ação</th><th>Entrada</th></tr></thead><tbody><tr><td>Movimento</td><td>Analógico esquerdo</td></tr><tr><td>Mira</td><td>Analógico direito</td></tr><tr><td>Correr</td><td>L3</td></tr><tr><td>Atacar</td><td>R2</td></tr><tr><td>Interagir</td><td>X</td></tr><tr><td>Crafting</td><td>Quadrado</td></tr><tr><td>Usar item</td><td>Triângulo</td></tr><tr><td>Inventário</td><td>R3</td></tr><tr><td>Alternar atalhos</td><td>L1/R1 ou direcional</td></tr><tr><td>Menu/voltar</td><td>Options/Share</td></tr></tbody></table><h2>8.3 Feedback ao jogador</h2><p>O feedback combina som, popups flutuantes, mensagens textuais, efeitos de impacto, overlays de dano, barras de vida de boss e indicadores de munição. Esses elementos reduzem ambiguidade: o jogador sabe quando recebeu dano, quando coletou itens, quando uma receita falhou ou quando uma arma está sem munição.</p></section><section class="section" id="s-9persistência-build-web-e-implantação"><h1>9 Persistência, build web e implantação</h1><p>O projeto pode ser executado localmente com Python e Pygame ou empacotado para web. A execução desktop usa pygame&gt;=2.5, enquanto o build web usa pygame-ce e pygbag. A configuração pygbag.ini ignora diretórios e arquivos que não devem entrar no pacote final, como build, .git, __pycache__, savegame.json e settings.json.</p><h2>9.1 Execução desktop</h2><pre class="code"><code>  63 | ## Rodar no Desktop
+  64 | 
+  65 | ```powershell
+  66 | python -m pip install -r requirements.txt
+  67 | python main.py
+  68 | ```
+  69 | 
+  70 | Dependencia principal:
+  71 | 
+  72 | ```text
+  73 | pygame&gt;=2.5
+  74 | ```</code></pre><h2>9.2 Build web</h2><pre class="code"><code>  76 | ## Build Web
+  77 | 
+  78 | ```powershell
+  79 | python -m pip install -r requirements-web.txt
+  80 | python -m pygbag --build .
+  81 | python tools/patch_web_build.py
+  82 | ```
+  83 | 
+  84 | A saida fica em `build/web`. O workflow em `.github/workflows/pages.yml` executa o build, aplica o ajuste da tela de carregamento e publica no GitHub Pages.</code></pre><p>Após a geração do build, o script tools/patch_web_build.py ajusta a página gerada pelo Pygbag. O workflow de GitHub Pages descrito no README executa build, aplica o patch e publica os artefatos para acesso online.</p><h2>9.3 Persistência multiplataforma</h2><p>A persistência foi pensada com abstração mínima. A mesma chamada save_game grava no meio adequado ao ambiente. Essa solução evita duplicar lógica de jogo e limita diferenças de plataforma a uma função de acesso ao storage.</p><h2>9.4 Configurações locais</h2><p>settings.json armazena preferências como volume. Esse arquivo é tratado como gerado localmente e não precisa ser versionado. Na web, o projeto usa uma chave própria em localStorage para manter configurações entre sessões do navegador.</p></section><section class="section" id="s-10validação-e-qualidade"><h1>10 Validação e qualidade</h1><p>A validação do projeto é predominantemente funcional e manual, adequada ao estágio acadêmico e à natureza interativa do jogo. Como jogos dependem de percepção visual, áudio e resposta de entrada, a validação manual continua importante mesmo quando testes automatizados são adicionados futuramente.</p><table class="appendix-table"><thead><tr><th>Área</th><th>Procedimento</th><th>Resultado esperado</th><th>Tipo</th></tr></thead><tbody><tr><td>Inicialização desktop</td><td>Executar python main.py</td><td>Tela de menu deve abrir e tocar música do menu.</td><td>Manual</td></tr><tr><td>Novo jogo</td><td>Selecionar Novo Jogo</td><td>Mapa inicial carregado com jogador no ponto seguro.</td><td>Manual</td></tr><tr><td>Movimento e colisão</td><td>Mover com WASD contra paredes/carros</td><td>Jogador não atravessa camadas sólidas.</td><td>Manual</td></tr><tr><td>Busca</td><td>Aproximar de loot/carro/natureza e pressionar E</td><td>Mensagem de recompensa e atualização do inventário.</td><td>Manual</td></tr><tr><td>Crafting</td><td>Abrir B e craftar receita possível</td><td>Recursos consumidos, item gerado e som de confirmação.</td><td>Manual</td></tr><tr><td>Combate melee</td><td>Atacar zumbi próximo</td><td>Zumbi recebe dano e morre ao zerar vida.</td><td>Manual</td></tr><tr><td>Combate arma de fogo</td><td>Equipar pistola/escopeta e atirar</td><td>Munição correta consumida, projéteis e impactos renderizados.</td><td>Manual</td></tr><tr><td>Status especiais</td><td>Usar munição incendiária/perfurante</td><td>Queimadura ou congelamento aplicado no inimigo.</td><td>Manual</td></tr><tr><td>Save/load</td><td>Salvar F5 e carregar F9</td><td>Estado principal restaurado.</td><td>Manual</td></tr><tr><td>Build web</td><td>python -m pygbag --build .</td><td>Pacote build/web criado para GitHub Pages.</td><td>Pipeline</td></tr></tbody></table><h2>10.1 Riscos técnicos</h2><table class=""><thead><tr><th>Risco</th><th>Impacto</th><th>Mitigação existente</th><th>Evolução sugerida</th></tr></thead><tbody><tr><td>main.py muito concentrado</td><td>Dificulta manutenção de longo prazo.</td><td>Módulos auxiliares já separam dados e entidades.</td><td>Extrair serviços de UI, combate e transições.</td></tr><tr><td>Validação manual</td><td>Regressões podem passar despercebidas.</td><td>Fluxos principais documentados.</td><td>Criar testes unitários para inventário, crafting, save e map_loader.</td></tr><tr><td>Dependência de padrões de nome de sprites</td><td>Assets fora do padrão não carregam.</td><td>Regex e exceções explícitas ajudam diagnóstico.</td><td>Documentar convenção para artistas/conteúdo.</td></tr><tr><td>Diferenças desktop/web</td><td>Áudio, controle e performance podem variar.</td><td>Uso de OGG, FPS menor na web e localStorage.</td><td>Criar checklist por navegador.</td></tr><tr><td>Colisões por camada</td><td>Nomes de layers incorretos quebram colisão.</td><td>Palavras-chave amplas e fallback de assets.</td><td>Criar validação automática de mapas TMJ.</td></tr></tbody></table><h2>10.2 Boas práticas observadas</h2><ul><li>Uso de type hints em grande parte dos módulos.</li><li>Separação de dados declarativos em dicionários reutilizáveis.</li><li>Cache de sprites e tiles para evitar recomputação.</li><li>Compatibilidade com ambiente web considerada no save, áudio e FPS.</li><li>Uso de ferramentas externas apropriadas para mapas e empacotamento.</li></ul></section><section class="section" id="s-11conclusão"><h1>11 Conclusão</h1><p>O Dead Streets demonstra a construção de um jogo 2D de sobrevivência com escopo significativo para um projeto acadêmico em Python. A implementação integra renderização, mapas externos, inventário, crafting, armas, inimigos, bosses, áudio, persistência e publicação web. O projeto mostra domínio de estruturas de dados, eventos, orientação a objetos, manipulação de arquivos, modularização e uso de bibliotecas.</p><p>Do ponto de vista técnico, a maior força do projeto está na integração entre conteúdo externo e lógica de jogo. Mapas criados no Tiled geram colisões, loot e transições; spritesheets são interpretadas por padrão de nomes; dados de armas e receitas ficam declarativos; save funciona em desktop e web. Esses elementos tornam o jogo expansível e documentável.</p><p>Como evolução, recomenda-se criar testes automatizados para módulos de regras, dividir gradualmente o arquivo main.py em componentes de domínio, adicionar validação automática de mapas, padronizar documentação de assets e criar um roteiro formal de testes por plataforma. Ainda assim, o estado atual já constitui uma base funcional, jogável e tecnicamente coerente.</p></section><section class="section" id="s-12referências"><h1>12 Referências</h1><p class="no-indent">PYTHON SOFTWARE FOUNDATION. <strong>Python Documentation</strong>. Disponível em: https://docs.python.org/. Acesso em: 28 maio 2026.</p><p class="no-indent">PYGAME COMMUNITY. <strong>Pygame documentation</strong>. Disponível em: https://www.pygame.org/docs/. Acesso em: 28 maio 2026.</p><p class="no-indent">PYGBAG. <strong>Pygbag project documentation</strong>. Disponível em: https://pygame-web.github.io/. Acesso em: 28 maio 2026.</p><p class="no-indent">TILED. <strong>Tiled Map Editor documentation</strong>. Disponível em: https://doc.mapeditor.org/. Acesso em: 28 maio 2026.</p><p class="no-indent">RIBEIRO, Gustavo Emanuel Abreu. <strong>Dead Streets</strong>: repositório local do projeto Jogo-Python. Brasília, 2026.</p></section><section class="section page-break" id="s-aapêndice-a---inventário-técnico-de-funções"><h1>A Apêndice A - Inventário técnico de funções</h1><p>Este apêndice lista funções e métodos identificados por análise estática dos arquivos Python. O objetivo é oferecer rastreabilidade para manutenção, revisão e estudo do código.</p><h2>A.1 Funções livres</h2><table class="appendix-table"><thead><tr><th>Módulo</th><th>Função</th><th>Linha</th></tr></thead><tbody><tr><td>main.py</td><td>_resolve_tmj_groups</td><td>38</td></tr><tr><td>main.py</td><td>_web_audio_path</td><td>164</td></tr><tr><td>main.py</td><td>_web_local_storage</td><td>171</td></tr><tr><td>main.py</td><td>_load_raw_sprite</td><td>528</td></tr><tr><td>main.py</td><td>_load_scaled_sprite</td><td>538</td></tr><tr><td>main.py</td><td>_load_ui_sprite</td><td>554</td></tr><tr><td>main.py</td><td>_build_facade_sprite</td><td>568</td></tr><tr><td>main.py</td><td>_make_shadow</td><td>613</td></tr><tr><td>main.py</td><td>_dim_sprite</td><td>624</td></tr><tr><td>main.py</td><td>_desaturate_sprite</td><td>630</td></tr><tr><td>main.py</td><td>_tint_sprite</td><td>656</td></tr><tr><td>main.py</td><td>_load_shot_impact_frames</td><td>687</td></tr><tr><td>main.py</td><td>_load_axe_projectile_frames</td><td>708</td></tr><tr><td>main.py</td><td>main</td><td>4782</td></tr><tr><td>save_system.py</td><td>_web_storage</td><td>13</td></tr><tr><td>save_system.py</td><td>save_game</td><td>24</td></tr><tr><td>save_system.py</td><td>load_game</td><td>50</td></tr><tr><td>save_system.py</td><td>save_exists</td><td>70</td></tr></tbody></table><h2>A.2 Métodos da classe Game</h2><table class="appendix-table"><thead><tr><th>Classe</th><th>Método</th><th>Linha</th></tr></thead><tbody><tr><td>Game</td><td>__init__</td><td>1010</td></tr><tr><td>Game</td><td>_present_frame</td><td>1126</td></tr><tr><td>Game</td><td>_build_menu_title_layers</td><td>1135</td></tr><tr><td>Game</td><td>_first_existing_path</td><td>1145</td></tr><tr><td>Game</td><td>_available_normal_maps</td><td>1151</td></tr><tr><td>Game</td><td>_is_boss_map_path</td><td>1154</td></tr><tr><td>Game</td><td>_available_boss_maps</td><td>1158</td></tr><tr><td>Game</td><td>_boss_loop_level</td><td>1161</td></tr><tr><td>Game</td><td>_next_boss_key</td><td>1167</td></tr><tr><td>Game</td><td>_next_boss_map_path</td><td>1173</td></tr><tr><td>Game</td><td>_boss_stats_for_map</td><td>1181</td></tr><tr><td>Game</td><td>_is_summoner_boss_active</td><td>1193</td></tr><tr><td>Game</td><td>_choose_random_normal_map</td><td>1196</td></tr><tr><td>Game</td><td>_normal_map_index</td><td>1206</td></tr><tr><td>Game</td><td>_boss_is_alive</td><td>1212</td></tr><tr><td>Game</td><td>_boss_enemies</td><td>1217</td></tr><tr><td>Game</td><td>_is_boss_enemy</td><td>1224</td></tr><tr><td>Game</td><td>_is_horde_map</td><td>1227</td></tr><tr><td>Game</td><td>_load_settings</td><td>1230</td></tr><tr><td>Game</td><td>_save_settings</td><td>1258</td></tr><tr><td>Game</td><td>_music_volume</td><td>1272</td></tr><tr><td>Game</td><td>_sfx_volume</td><td>1278</td></tr><tr><td>Game</td><td>_apply_audio_settings</td><td>1283</td></tr><tr><td>Game</td><td>_load_sfx</td><td>1295</td></tr><tr><td>Game</td><td>_play_sfx</td><td>1309</td></tr><tr><td>Game</td><td>_play_music</td><td>1316</td></tr><tr><td>Game</td><td>_play_title_music</td><td>1338</td></tr><tr><td>Game</td><td>_play_game_music</td><td>1341</td></tr><tr><td>Game</td><td>_play_boss_music</td><td>1344</td></tr><tr><td>Game</td><td>_play_active_music</td><td>1347</td></tr><tr><td>Game</td><td>_reset_game</td><td>1353</td></tr><tr><td>Game</td><td>_clear_world_content</td><td>1407</td></tr><tr><td>Game</td><td>_store_exterior_world_state</td><td>1427</td></tr><tr><td>Game</td><td>_restore_exterior_world_state</td><td>1456</td></tr><tr><td>Game</td><td>_set_collision_rects</td><td>1494</td></tr><tr><td>Game</td><td>_nearby_collision_rects</td><td>1507</td></tr><tr><td>Game</td><td>_generate_world</td><td>1526</td></tr><tr><td>Game</td><td>_load_tiled_world</td><td>1557</td></tr><tr><td>Game</td><td>_default_spawn_target</td><td>1614</td></tr><tr><td>Game</td><td>_switch_to_tiled_map</td><td>1619</td></tr><tr><td>Game</td><td>_enter_random_interior</td><td>1643</td></tr><tr><td>Game</td><td>_leave_interior</td><td>1661</td></tr><tr><td>Game</td><td>_use_map_exit</td><td>1695</td></tr><tr><td>Game</td><td>_populate_decorations</td><td>1755</td></tr><tr><td>Game</td><td>_rebuild_static_world_drawables</td><td>1777</td></tr><tr><td>Game</td><td>_random_world_position</td><td>1786</td></tr><tr><td>Game</td><td>_is_position_blocked</td><td>1797</td></tr><tr><td>Game</td><td>_find_open_position_near</td><td>1806</td></tr><tr><td>Game</td><td>_is_gamepad_live</td><td>1823</td></tr><tr><td>Game</td><td>_remember_gamepad</td><td>1837</td></tr><tr><td>Game</td><td>_clear_gamepad</td><td>1845</td></tr><tr><td>Game</td><td>_scan_sdl_gamepad</td><td>1853</td></tr><tr><td>Game</td><td>_scan_raw_gamepad</td><td>1866</td></tr><tr><td>Game</td><td>_get_gamepad</td><td>1883</td></tr><tr><td>Game</td><td>_deadzone_axis</td><td>1912</td></tr><tr><td>Game</td><td>_gamepad_axis</td><td>1917</td></tr><tr><td>Game</td><td>_gamepad_axis_count</td><td>1925</td></tr><tr><td>Game</td><td>_gamepad_button_count</td><td>1933</td></tr><tr><td>Game</td><td>_uses_sdl_gamepad_mapping</td><td>1941</td></tr><tr><td>Game</td><td>_gamepad_button_map</td><td>1944</td></tr><tr><td>Game</td><td>_has_any_button</td><td>1975</td></tr><tr><td>Game</td><td>_gamepad_right_stick</td><td>1978</td></tr><tr><td>Game</td><td>_poll_gamepad_buttons</td><td>2013</td></tr><tr><td>Game</td><td>_apply_gamepad_input</td><td>2027</td></tr><tr><td>Game</td><td>_spawn_zombie</td><td>2100</td></tr><tr><td>Game</td><td>_zombie_variant_weights</td><td>2140</td></tr><tr><td>Game</td><td>_spawn_boss_zombie</td><td>2149</td></tr><tr><td>Game</td><td>_create_boss_zombie</td><td>2179</td></tr><tr><td>Game</td><td>_spawn_loop_boss_partner</td><td>2199</td></tr><tr><td>Game</td><td>_apply_loaded_state</td><td>2230</td></tr><tr><td>Game</td><td>process_input</td><td>2251</td></tr><tr><td>Game</td><td>_handle_cheat_key</td><td>2377</td></tr><tr><td>Game</td><td>process_menu_input</td><td>2392</td></tr><tr><td>Game</td><td>_current_menu_actions</td><td>2430</td></tr><tr><td>Game</td><td>_clamp_menu_selection</td><td>2437</td></tr><tr><td>Game</td><td>_move_menu_selection</td><td>2444</td></tr><tr><td>Game</td><td>_activate_menu_selection</td><td>2451</td></tr><tr><td>Game</td><td>_adjust_selected_setting</td><td>2469</td></tr><tr><td>Game</td><td>_process_gamepad_menu_input</td><td>2480</td></tr><tr><td>Game</td><td>_handle_main_menu_action</td><td>2528</td></tr><tr><td>Game</td><td>_tutorial_pages_legacy_unused</td><td>2552</td></tr><tr><td>Game</td><td>_tutorial_pages</td><td>2580</td></tr><tr><td>Game</td><td>_advance_tutorial</td><td>2608</td></tr><tr><td>Game</td><td>_close_tutorial</td><td>2616</td></tr><tr><td>Game</td><td>_process_tutorial_gamepad_input</td><td>2623</td></tr><tr><td>Game</td><td>_load_saved_game</td><td>2638</td></tr><tr><td>Game</td><td>_set_menu_message</td><td>2655</td></tr><tr><td>Game</td><td>_main_menu_button_rects</td><td>2659</td></tr><tr><td>Game</td><td>_blank_menu_button_rect</td><td>2677</td></tr><tr><td>Game</td><td>_saves_menu_button_rects</td><td>2681</td></tr><tr><td>Game</td><td>_settings_slider_rects</td><td>2691</td></tr><tr><td>Game</td><td>_settings_back_button_rect</td><td>2698</td></tr><tr><td>Game</td><td>_handle_saves_menu_click</td><td>2701</td></tr><tr><td>Game</td><td>_handle_settings_menu_click</td><td>2722</td></tr><tr><td>Game</td><td>_update_difficulty</td><td>2739</td></tr><tr><td>Game</td><td>_update_survival</td><td>2744</td></tr><tr><td>Game</td><td>_update_zombies</td><td>2756</td></tr><tr><td>Game</td><td>_is_flanking_boss</td><td>2785</td></tr><tr><td>Game</td><td>_boss_duo_escape_direction</td><td>2788</td></tr><tr><td>Game</td><td>_update_duo_boss_target</td><td>2802</td></tr><tr><td>Game</td><td>_update_flanking_boss</td><td>2820</td></tr><tr><td>Game</td><td>_update_summoner_boss</td><td>2868</td></tr><tr><td>Game</td><td>_summon_boss_wave</td><td>2932</td></tr><tr><td>Game</td><td>_update_shot_impacts</td><td>2953</td></tr><tr><td>Game</td><td>_spawn_axe_projectile</td><td>2958</td></tr><tr><td>Game</td><td>_update_axe_projectiles</td><td>2973</td></tr><tr><td>Game</td><td>_update_boss_phase</td><td>2993</td></tr><tr><td>Game</td><td>_update_spawns</td><td>3011</td></tr><tr><td>Game</td><td>_find_nearest_node</td><td>3035</td></tr><tr><td>Game</td><td>_find_nearest_corpse</td><td>3051</td></tr><tr><td>Game</td><td>_find_nearest_trigger</td><td>3066</td></tr><tr><td>Game</td><td>_triggers_in_range</td><td>3080</td></tr><tr><td>Game</td><td>_sync_exit_trigger_state</td><td>3093</td></tr><tr><td>Game</td><td>_handle_map_transitions</td><td>3098</td></tr><tr><td>Game</td><td>_handle_search</td><td>3130</td></tr><tr><td>Game</td><td>_corpse_loot_rewards</td><td>3168</td></tr><tr><td>Game</td><td>_grant_rewards</td><td>3196</td></tr><tr><td>Game</td><td>_grant_boss_rewards</td><td>3224</td></tr><tr><td>Game</td><td>_add_item_popups</td><td>3244</td></tr><tr><td>Game</td><td>_add_alert_popup</td><td>3262</td></tr><tr><td>Game</td><td>_update_floating_popups</td><td>3266</td></tr><tr><td>Game</td><td>_handle_attack</td><td>3271</td></tr><tr><td>Game</td><td>_attack_melee</td><td>3302</td></tr><tr><td>Game</td><td>_fire_gun</td><td>3325</td></tr><tr><td>Game</td><td>_find_shot_hits</td><td>3380</td></tr><tr><td>Game</td><td>_apply_fire_splash</td><td>3407</td></tr><tr><td>Game</td><td>_handle_zombie_death</td><td>3427</td></tr><tr><td>Game</td><td>_all_boss_enemies_defeated</td><td>3439</td></tr><tr><td>Game</td><td>_complete_boss_defeat</td><td>3443</td></tr><tr><td>Game</td><td>_despawn_summoner_minions</td><td>3455</td></tr><tr><td>Game</td><td>_damage_zombie</td><td>3465</td></tr><tr><td>Game</td><td>_apply_weapon_status</td><td>3480</td></tr><tr><td>Game</td><td>_handle_heal</td><td>3492</td></tr><tr><td>Game</td><td>_handle_crafting</td><td>3538</td></tr><tr><td>Game</td><td>_handle_crafting_click</td><td>3551</td></tr><tr><td>Game</td><td>_set_message</td><td>3578</td></tr><tr><td>Game</td><td>_is_gameplay_paused_by_panel</td><td>3582</td></tr><tr><td>Game</td><td>update_game_state</td><td>3585</td></tr><tr><td>Game</td><td>_return_to_title_after_death</td><td>3639</td></tr><tr><td>Game</td><td>render_menu</td><td>3649</td></tr><tr><td>Game</td><td>_draw_menu_background_overlay</td><td>3673</td></tr><tr><td>Game</td><td>_draw_main_menu</td><td>3676</td></tr><tr><td>Game</td><td>_draw_menu_title</td><td>3692</td></tr><tr><td>Game</td><td>_draw_menu_panel</td><td>3710</td></tr><tr><td>Game</td><td>_wrap_text</td><td>3717</td></tr><tr><td>Game</td><td>_draw_tutorial_paragraph</td><td>3732</td></tr><tr><td>Game</td><td>_draw_saves_menu</td><td>3782</td></tr><tr><td>Game</td><td>_draw_settings_menu</td><td>3804</td></tr><tr><td>Game</td><td>_draw_blank_menu_button</td><td>3836</td></tr><tr><td>Game</td><td>_resolve_player_collisions</td><td>3850</td></tr><tr><td>Game</td><td>_resolve_player_axis</td><td>3890</td></tr><tr><td>Game</td><td>_player_collision_rect</td><td>3923</td></tr><tr><td>Game</td><td>_entity_collision_rect</td><td>3926</td></tr><tr><td>Game</td><td>_position_hits_obstacle</td><td>3931</td></tr><tr><td>Game</td><td>_movement_crosses_obstacle</td><td>3937</td></tr><tr><td>Game</td><td>_push_entity_out_of_obstacles</td><td>3950</td></tr><tr><td>Game</td><td>_resolve_zombie_obstacles</td><td>3977</td></tr><tr><td>Game</td><td>_separate_zombies</td><td>4014</td></tr><tr><td>Game</td><td>render</td><td>4061</td></tr><tr><td>Game</td><td>_draw_world_scene</td><td>4079</td></tr><tr><td>Game</td><td>_update_camera</td><td>4112</td></tr><tr><td>Game</td><td>screen_to_world</td><td>4126</td></tr><tr><td>Game</td><td>_window_to_screen</td><td>4129</td></tr><tr><td>Game</td><td>_draw_ground</td><td>4137</td></tr><tr><td>Game</td><td>_draw_crosshair</td><td>4152</td></tr><tr><td>Game</td><td>_draw_interact_hint</td><td>4160</td></tr><tr><td>Game</td><td>_draw_damage_overlay</td><td>4191</td></tr><tr><td>Game</td><td>_draw_gamepad_debug</td><td>4205</td></tr><tr><td>Game</td><td>_draw_ui</td><td>4242</td></tr><tr><td>Game</td><td>_draw_tutorial_overlay</td><td>4269</td></tr><tr><td>Game</td><td>_draw_boss_health_bar</td><td>4306</td></tr><tr><td>Game</td><td>_draw_quick_access_bar</td><td>4332</td></tr><tr><td>Game</td><td>_quick_access_bar_rect</td><td>4348</td></tr><tr><td>Game</td><td>_quick_slot_rect</td><td>4351</td></tr><tr><td>Game</td><td>_quick_slot_index_at</td><td>4363</td></tr><tr><td>Game</td><td>_draw_ammo_indicator</td><td>4369</td></tr><tr><td>Game</td><td>_draw_inventory_panel</td><td>4417</td></tr><tr><td>Game</td><td>_visible_inventory_items</td><td>4438</td></tr><tr><td>Game</td><td>_inventory_item_rects</td><td>4441</td></tr><tr><td>Game</td><td>_inventory_item_at</td><td>4471</td></tr><tr><td>Game</td><td>_draw_slot_item</td><td>4478</td></tr><tr><td>Game</td><td>_inventory_close_button_rect</td><td>4503</td></tr><tr><td>Game</td><td>_crafting_panel_rect</td><td>4509</td></tr><tr><td>Game</td><td>_crafting_close_button_rect</td><td>4513</td></tr><tr><td>Game</td><td>_crafting_recipe_rects</td><td>4518</td></tr><tr><td>Game</td><td>_scroll_crafting</td><td>4541</td></tr><tr><td>Game</td><td>_draw_crafting_panel</td><td>4554</td></tr><tr><td>Game</td><td>_draw_crafting_scrollbar</td><td>4605</td></tr><tr><td>Game</td><td>_draw_crafting_item_on</td><td>4615</td></tr><tr><td>Game</td><td>_draw_icon_meter</td><td>4643</td></tr><tr><td>Game</td><td>_available_recipe_names</td><td>4670</td></tr><tr><td>Game</td><td>_get_selected_recipe</td><td>4677</td></tr><tr><td>Game</td><td>_cycle_recipe</td><td>4683</td></tr><tr><td>Game</td><td>_cycle_quick_slot</td><td>4690</td></tr><tr><td>Game</td><td>_select_quick_slot</td><td>4695</td></tr><tr><td>Game</td><td>_assign_quick_slot_item</td><td>4706</td></tr><tr><td>Game</td><td>_weapon_variants_for_slot</td><td>4721</td></tr><tr><td>Game</td><td>_owned_weapon_variants</td><td>4724</td></tr><tr><td>Game</td><td>_slot_quantity</td><td>4731</td></tr><tr><td>Game</td><td>_display_item_for_slot</td><td>4738</td></tr><tr><td>Game</td><td>_equip_weapon_slot</td><td>4746</td></tr><tr><td>Game</td><td>_equip_weapon</td><td>4758</td></tr><tr><td>Game</td><td>run</td><td>4767</td></tr></tbody></table></section><section class="section page-break" id="s-bapêndice-b---trechos-de-código-comentados"><h1>B Apêndice B - Trechos de código comentados</h1><p>Os trechos abaixo foram selecionados por representarem os contratos centrais do projeto: configuração global, carregamento de sprites, criação de receitas, persistência e leitura de mapas.</p><h2>B.1 Constantes principais</h2><pre class="code"><code>  20 | from save_system import load_game, save_exists, save_game
+  21 | from weapons import WEAPONS, WEAPON_FAMILIES, WEAPON_ITEMS
+  22 | from zombie import AXE_THROW_MAX_DISTANCE, AXE_THROW_MIN_DISTANCE, Zombie
+  23 | 
+  24 | 
+  25 | IS_WEB = sys.platform == &quot;emscripten&quot;
+  26 | WIDTH, HEIGHT = 960, 540
+  27 | WINDOW_WIDTH, WINDOW_HEIGHT = (WIDTH, HEIGHT) if IS_WEB else (1600, 900)
+  28 | TARGET_FPS = 45 if IS_WEB else 60
+  29 | COLLISION_BUCKET_SIZE = 128
+  30 | WORLD_WIDTH, WORLD_HEIGHT = 2200, 1400
+  31 | PROJECT_ROOT = Path(__file__).resolve().parent
+  32 | GAME_TITLE = &quot;Dead Streets&quot;
+  33 | GAME_SUBTITLE = &quot;ZOMBIE SURVIVAL&quot;
+  34 | LOCAL_MAP_ROOT = PROJECT_ROOT / &quot;maps&quot;
+  35 | MAP_ROOT = LOCAL_MAP_ROOT if LOCAL_MAP_ROOT.exists() else PROJECT_ROOT.parent
+  36 | 
+  37 | 
+  38 | def _resolve_tmj_groups(groups: List[Tuple[str, ...]], pattern: str) -&gt; List[Path]:
+  39 |     paths: List[Path] = []
+  40 |     known_names = {name.lower() for group in groups for name in group}
+  41 | 
+  42 |     for group in groups:
+  43 |         selected = next((MAP_ROOT / name for name in group if (MAP_ROOT / name).exists()), MAP_ROOT / group[0])
+  44 |         if selected.name.lower() not in {path.name.lower() for path in paths}:
+  45 |             paths.append(selected)
+  46 | 
+  47 |     if MAP_ROOT.exists():
+  48 |         for path in sorted(MAP_ROOT.glob(pattern), key=lambda item: item.name.lower()):
+  49 |             if path.suffix.lower() == &quot;.tmj&quot; and path.name.lower() not in known_names:
+  50 |                 paths.append(path)
+  51 |     return paths
+  52 | 
+  53 | 
+  54 | NORMAL_MAP_PATHS = _resolve_tmj_groups(
+  55 |     [
+  56 |         (&quot;Mapa 1.tmj&quot;, &quot;Mapa 1.1.tmj&quot;),
+  57 |         (&quot;Mapa 2.tmj&quot;,),
+  58 |         (&quot;Mapa 3.tmj&quot;,),
+  59 |         (&quot;Mapa 4.tmj&quot;,),
+  60 |     ],
+  61 |     &quot;Mapa *.tmj&quot;,
+  62 | )
+  63 | BOSS_MAP_PATHS = _resolve_tmj_groups(
+  64 |     [</code></pre><h2>B.2 Configuração de efeitos sonoros</h2><pre class="code"><code>  83 | BOSS_MUSIC_PATH = AUDIO_ROOT / &quot;Boss_Fight.ogg&quot;
+  84 | GAME_MUSIC_GAIN = 1.0
+  85 | SFX_ROOT = AUDIO_ROOT / &quot;sfx&quot;
+  86 | SFX_GAIN = 1.25
+  87 | WEB_SETTINGS_KEY = &quot;rua_morta_settings&quot;
+  88 | TILED_MAP_SCALE = 2
+  89 | BG_COLOR = (24, 29, 31)
+  90 | SEARCH_RANGE = 50
+  91 | DOOR_RANGE = 74
+  92 | EXIT_RANGE = 64
+  93 | START_CLEAR_RADIUS = 170
+  94 | ZOMBIE_AVOIDANCE_ANGLES = (0, 25, -25, 50, -50, 85, -85, 125, -125, 180)
+  95 | ZOMBIE_SEPARATION_STRENGTH = 58.0
+  96 | ZOMBIE_SEPARATION_ITERATIONS = 2
+  97 | ZOMBIE_SEPARATION_BUCKET_SIZE = 96
+  98 | BOTTOM_WORLD_PADDING = 118
+  99 | GAMEPAD_A = 0
+ 100 | GAMEPAD_B = 1
+ 101 | GAMEPAD_X = 2
+ 102 | GAMEPAD_Y = 3
+ 103 | GAMEPAD_BACK = 4
+ 104 | GAMEPAD_GUIDE = 5
+ 105 | GAMEPAD_START = 6
+ 106 | GAMEPAD_L3 = 7
+ 107 | GAMEPAD_R3 = 8
+ 108 | GAMEPAD_L1 = 9
+ 109 | GAMEPAD_R1 = 10
+ 110 | GAMEPAD_DPAD_UP = 11
+ 111 | GAMEPAD_DPAD_DOWN = 12
+ 112 | GAMEPAD_DPAD_LEFT = 13
+ 113 | GAMEPAD_DPAD_RIGHT = 14
+ 114 | GAMEPAD_AXIS_LEFT_X = 0
+ 115 | GAMEPAD_AXIS_LEFT_Y = 1
+ 116 | GAMEPAD_AXIS_RIGHT_X = 2
+ 117 | GAMEPAD_AXIS_RIGHT_Y = 3
+ 118 | GAMEPAD_AXIS_L2 = 4
+ 119 | GAMEPAD_AXIS_R2 = 5
+ 120 | RAW_GAMEPAD_BACK = 8
+ 121 | RAW_GAMEPAD_START = 9
+ 122 | RAW_GAMEPAD_L3 = 10
+ 123 | RAW_GAMEPAD_R3 = 11
+ 124 | RAW_GAMEPAD_DPAD_UP = 12
+ 125 | RAW_GAMEPAD_DPAD_DOWN = 13
+ 126 | RAW_GAMEPAD_DPAD_LEFT = 14
+ 127 | RAW_GAMEPAD_DPAD_RIGHT = 15
+ 128 | RAW_GAMEPAD_GUIDE = 16
+ 129 | RAW_GAMEPAD_TOUCHPAD = 17
+ 130 | GAMEPAD_RESCAN_INTERVAL_MS = 600
+ 131 | GAMEPAD_DISCONNECT_GRACE_MS = 1400
+ 132 | 
+ 133 | SFX_FILES = {</code></pre><h2>B.3 Sprites do jogador</h2><pre class="code"><code> 120 | 
+ 121 |         for loadout_name in (&quot;taco&quot;, &quot;pistola&quot;, &quot;escopeta&quot;):
+ 122 |             weapon_layers = cls._load_loadout_sprites(loadout_name, LOADOUTS[loadout_name], include_no_hands=False)
+ 123 |             cls._sprite_cache[loadout_name] = cls._compose_weapon_loadout(loadout_name, main_body, weapon_layers)
+ 124 | 
+ 125 |         for variant_name, base_name in LOADOUT_ALIASES.items():
+ 126 |             weapon_layers = cls._load_loadout_sprites(base_name, LOADOUTS[base_name], include_no_hands=False)
+ 127 |             weapon_layers = cls._tint_weapon_layers(weapon_layers, WEAPON_TINTS[variant_name])
+ 128 |             cls._sprite_cache[variant_name] = cls._compose_weapon_loadout(variant_name, main_body, weapon_layers)
+ 129 | 
+ 130 |         if &quot;maos&quot; not in cls._sprite_cache or &quot;idle&quot; not in cls._sprite_cache[&quot;maos&quot;]:
+ 131 |             raise FileNotFoundError(f&quot;Nenhuma spritesheet do personagem encontrada em {CHARACTER_ROOT}&quot;)
+ 132 | 
+ 133 |     @classmethod
+ 134 |     def _load_loadout_sprites(
+ 135 |         cls,
+ 136 |         loadout_name: str,
+ 137 |         data: dict[str, object],
+ 138 |         include_no_hands: bool,
+ 139 |     ) -&gt; dict[str, dict[str, list[pygame.Surface]]]:
+ 140 |         animations: dict[str, dict[str, list[pygame.Surface]]] = {}
+ 141 |         root = Path(data[&quot;root&quot;])
+ 142 |         prefix = str(data[&quot;prefix&quot;])
+ 143 |         pattern = re.compile(
+ 144 |             rf&quot;{re.escape(prefix)}_(?P&lt;direction&gt;down|up|side-left|side)_(?P&lt;animation&gt;.+)-Sheet(?P&lt;frames&gt;\d+)\.png$&quot;,
+ 145 |             re.IGNORECASE,
+ 146 |         )
+ 147 | 
+ 148 |         for spritesheet_path in root.rglob(f&quot;{prefix}_*.png&quot;):
+ 149 |             filename = spritesheet_path.name.lower()
+ 150 |             is_no_hands = &quot;no-hands&quot; in filename or &quot;nohands&quot; in filename
+ 151 |             if is_no_hands != include_no_hands:
+ 152 |                 continue
+ 153 | 
+ 154 |             match = pattern.match(spritesheet_path.name)
+ 155 |             if match is None:
+ 156 |                 continue
+ 157 | 
+ 158 |             direction = DIRECTION_NAMES[match.group(&quot;direction&quot;).lower()]
+ 159 |             raw_animation = match.group(&quot;animation&quot;).lower()
+ 160 |             raw_animation = raw_animation.replace(&quot;_nohands&quot;, &quot;&quot;).replace(&quot;_no-hands&quot;, &quot;&quot;)
+ 161 |             animation = ANIMATION_NAMES.get(raw_animation)
+ 162 |             if animation is None:
+ 163 |                 continue
+ 164 | 
+ 165 |             frames = cls._load_spritesheet(spritesheet_path, int(match.group(&quot;frames&quot;)))
+ 166 |             if animation == &quot;idle_and_run&quot;:
+ 167 |                 animations.setdefault(&quot;idle&quot;, {})[direction] = frames
+ 168 |                 animations.setdefault(&quot;run&quot;, {})[direction] = frames
+ 169 |             else:
+ 170 |                 animations.setdefault(animation, {})[direction] = frames
+ 171 | 
+ 172 |         return animations</code></pre><h2>B.4 Sprites de zumbis</h2><pre class="code"><code> 114 |         pattern = re.compile(
+ 115 |             rf&quot;{re.escape(prefix)}_(?P&lt;direction&gt;Down|Up|Side-left|Side)_(?P&lt;animation&gt;.+)-Sheet(?P&lt;frames&gt;\d+)\.png$&quot;,
+ 116 |             re.IGNORECASE,
+ 117 |         )
+ 118 |         sprite_set: dict[str, dict[str, list[pygame.Surface]]] = {}
+ 119 | 
+ 120 |         for spritesheet_path in root.glob(f&quot;{prefix}_*.png&quot;):
+ 121 |             match = pattern.match(spritesheet_path.name)
+ 122 |             if match is None:
+ 123 |                 continue
+ 124 | 
+ 125 |             direction = DIRECTION_NAMES[match.group(&quot;direction&quot;).lower()]
+ 126 |             animation = ANIMATION_NAMES.get(match.group(&quot;animation&quot;).lower())
+ 127 |             if animation is None:
+ 128 |                 continue
+ 129 | 
+ 130 |             frames = cls._load_spritesheet(spritesheet_path, int(match.group(&quot;frames&quot;)), int(data[&quot;scale&quot;]))
+ 131 |             sprite_set.setdefault(animation, {})[direction] = frames
+ 132 | 
+ 133 |         if &quot;walk&quot; not in sprite_set:
+ 134 |             raise FileNotFoundError(f&quot;Nenhuma spritesheet de zumbi encontrada em {root}&quot;)
+ 135 | 
+ 136 |         cls._sprite_cache[zombie_type] = sprite_set
+ 137 | 
+ 138 |     @classmethod
+ 139 |     def _load_spritesheet(cls, path: Path, frame_count: int, scale: int) -&gt; list[pygame.Surface]:
+ 140 |         display_ready = pygame.display.get_surface() is not None
+ 141 |         sheet = pygame.image.load(str(path))
+ 142 |         if display_ready:
+ 143 |             sheet = sheet.convert_alpha()
+ 144 | 
+ 145 |         frame_width = sheet.get_width() // frame_count
+ 146 |         frame_height = sheet.get_height()
+ 147 |         frames: list[pygame.Surface] = []
+ 148 |         for frame_index in range(frame_count):
+ 149 |             frame = pygame.Surface((frame_width, frame_height), pygame.SRCALPHA)
+ 150 |             frame.blit(
+ 151 |                 sheet,
+ 152 |                 (0, 0),
+ 153 |                 pygame.Rect(frame_index * frame_width, 0, frame_width, frame_height),
+ 154 |             )
+ 155 |             frames.append(
+ 156 |                 pygame.transform.scale(
+ 157 |                     frame,
+ 158 |                     (frame_width * scale, frame_height * scale),
+ 159 |                 )
+ 160 |             )
+ 161 |         return frames
+ 162 | 
+ 163 |     @staticmethod
+ 164 |     def _direction_from_vector(direction: pygame.Vector2) -&gt; str:
+ 165 |         if abs(direction.x) &gt; abs(direction.y):</code></pre><h2>B.5 Leitura de tiles</h2><pre class="code"><code> 260 |         cache_key = (gid, flipped_h, flipped_v)
+ 261 | 
+ 262 |         tileset = self._find_tileset(gid)
+ 263 |         if tileset is None:
+ 264 |             return None, None
+ 265 | 
+ 266 |         if cache_key in self._tile_cache:
+ 267 |             return self._tile_cache[cache_key], tileset
+ 268 | 
+ 269 |         local_id = gid - tileset.firstgid
+ 270 |         if local_id in tileset.tile_image_paths:
+ 271 |             tile = self._load_tileset_image(tileset.tile_image_paths[local_id])
+ 272 |             if tile is None:
+ 273 |                 return None, tileset
+ 274 |         elif tileset.image is not None and tileset.columns &gt; 0:
+ 275 |             source_x = (local_id % tileset.columns) * tileset.tile_width
+ 276 |             source_y = (local_id // tileset.columns) * tileset.tile_height
+ 277 |             tile = pygame.Surface((tileset.tile_width, tileset.tile_height), pygame.SRCALPHA)
+ 278 |             tile.blit(
+ 279 |                 tileset.image,
+ 280 |                 (0, 0),
+ 281 |                 pygame.Rect(source_x, source_y, tileset.tile_width, tileset.tile_height),
+ 282 |             )
+ 283 |         else:
+ 284 |             return None, tileset
+ 285 | 
+ 286 |         if flipped_h or flipped_v:
+ 287 |             tile = pygame.transform.flip(tile, flipped_h, flipped_v)
+ 288 |         if self.scale != 1:
+ 289 |             tile = pygame.transform.scale(tile, (tile.get_width() * self.scale, tile.get_height() * self.scale))
+ 290 | 
+ 291 |         self._tile_cache[cache_key] = tile
+ 292 |         return tile, tileset
+ 293 | 
+ 294 |     def _find_tileset(self, gid: int) -&gt; TileSet | None:</code></pre><h2>B.6 Receitas completas</h2><pre class="code"><code>   8 | class CraftingSystem:
+   9 | 
+  10 |     crafting_recipes: Dict[str, Dict[str, object]] = {
+  11 |         &quot;taco&quot;: {&quot;cost&quot;: {&quot;madeira&quot;: 3}},
+  12 |         &quot;comida&quot;: {&quot;cost&quot;: {&quot;erva&quot;: 1, &quot;madeira&quot;: 1}, &quot;amount&quot;: 1},
+  13 |         &quot;balas&quot;: {&quot;cost&quot;: {&quot;metal&quot;: 1, &quot;polvora&quot;: 1}, &quot;amount&quot;: 6},
+  14 |         &quot;cartuchos&quot;: {&quot;cost&quot;: {&quot;metal&quot;: 2, &quot;polvora&quot;: 1}, &quot;amount&quot;: 3, &quot;unlock_any&quot;: [&quot;escopeta&quot;, &quot;escopeta_incendiaria&quot;]},
+  15 |         &quot;balas_incendiarias&quot;: {
+  16 |             &quot;cost&quot;: {&quot;balas&quot;: 4, &quot;polvora&quot;: 1},
+  17 |             &quot;amount&quot;: 4,
+  18 |             &quot;unlock&quot;: &quot;pistola_incendiaria&quot;,
+  19 |         },
+  20 |         &quot;balas_perfurantes&quot;: {
+  21 |             &quot;cost&quot;: {&quot;balas&quot;: 4, &quot;metal&quot;: 2},
+  22 |             &quot;amount&quot;: 4,
+  23 |             &quot;unlock&quot;: &quot;pistola_perfurante&quot;,
+  24 |         },
+  25 |         &quot;cartuchos_incendiarios&quot;: {
+  26 |             &quot;cost&quot;: {&quot;cartuchos&quot;: 2, &quot;polvora&quot;: 1},
+  27 |             &quot;amount&quot;: 2,
+  28 |             &quot;unlock&quot;: &quot;escopeta_incendiaria&quot;,
+  29 |         },
+  30 |         &quot;kit_medico&quot;: {&quot;cost&quot;: {&quot;pano&quot;: 2, &quot;erva&quot;: 2}},
+  31 |     }
+  32 | 
+  33 |     def is_recipe_unlocked(self, item_name: str, inventory: Inventory | None = None) -&gt; bool:
+  34 |         recipe = self.crafting_recipes.get(item_name)
+  35 |         if recipe is None:</code></pre><h2>B.7 Inventário completo</h2><pre class="code"><code>   8 | 
+   9 |         defaults = {
+  10 |             &quot;madeira&quot;: 0,
+  11 |             &quot;metal&quot;: 0,
+  12 |             &quot;comida&quot;: 0,
+  13 |             &quot;pano&quot;: 0,
+  14 |             &quot;erva&quot;: 0,
+  15 |             &quot;kit_medico&quot;: 0,
+  16 |             &quot;polvora&quot;: 0,
+  17 |             &quot;balas&quot;: 0,
+  18 |             &quot;balas_incendiarias&quot;: 0,
+  19 |             &quot;balas_perfurantes&quot;: 0,
+  20 |             &quot;cartuchos&quot;: 0,
+  21 |             &quot;cartuchos_incendiarios&quot;: 0,
+  22 |             &quot;maos&quot;: 1,
+  23 |             &quot;taco&quot;: 0,
+  24 |             &quot;pistola&quot;: 0,
+  25 |             &quot;pistola_incendiaria&quot;: 0,
+  26 |             &quot;pistola_perfurante&quot;: 0,
+  27 |             &quot;escopeta&quot;: 0,
+  28 |             &quot;escopeta_incendiaria&quot;: 0,
+  29 |         }
+  30 |         self.inventory: Dict[str, int] = defaults
+  31 |         if initial:</code></pre><h2>B.8 Save completo</h2><pre class="code"><code>  13 | def _web_storage() -&gt; object | None:
+  14 |     if sys.platform != &quot;emscripten&quot;:
+  15 |         return None
+  16 |     try:
+  17 |         import platform
+  18 | 
+  19 |         return platform.window.localStorage
+  20 |     except (AttributeError, ImportError):
+  21 |         return None
+  22 | 
+  23 | 
+  24 | def save_game(
+  25 |     file_path: str,
+  26 |     player: Player,
+  27 |     inventory: Inventory,
+  28 |     game_time: float,
+  29 |     quick_slots: list[str] | None = None,
+  30 | ) -&gt; None:
+  31 |     data: Dict[str, Any] = {
+  32 |         &quot;player_health&quot;: player.player_health,
+  33 |         &quot;player_hunger&quot;: player.player_hunger,
+  34 |         &quot;player_position&quot;: list(player.player_position),
+  35 |         &quot;inventory&quot;: inventory.to_dict(),
+  36 |         &quot;game_time&quot;: game_time,
+  37 |         &quot;current_weapon&quot;: player.current_weapon,
+  38 |     }
+  39 |     if quick_slots is not None:
+  40 |         data[&quot;quick_slots&quot;] = list(quick_slots)
+  41 |     storage = _web_storage()
+  42 |     if storage is not None:
+  43 |         storage.setItem(WEB_SAVE_KEY, json.dumps(data))
+  44 |         return
+  45 | 
+  46 |     with open(file_path, &quot;w&quot;, encoding=&quot;utf-8&quot;) as file:
+  47 |         json.dump(data, file, indent=2)
+  48 | 
+  49 | 
+  50 | def load_game(file_path: str) -&gt; Dict[str, Any] | None:
+  51 |     storage = _web_storage()
+  52 |     if storage is not None:
+  53 |         raw_data = storage.getItem(WEB_SAVE_KEY)
+  54 |         if not raw_data:
+  55 |             return None
+  56 |         data = json.loads(str(raw_data))
+  57 |     else:
+  58 |         try:
+  59 |             with open(file_path, &quot;r&quot;, encoding=&quot;utf-8&quot;) as file:
+  60 |                 data = json.load(file)
+  61 |         except FileNotFoundError:
+  62 |             return None
+  63 | </code></pre></section>
+</body>
+</html>

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="500" viewBox="0 0 920 500">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#444"/></marker></defs>
+<rect width="100%" height="100%" fill="#fbfbf7"/>
+<text x="40" y="44" font-family="Times New Roman" font-size="22" font-weight="700">Fluxo de crafting</text>
+<rect x="90" y="76" width="740" height="46" rx="4" fill="#f0efe8" stroke="#333"/>
+<text x="108" y="105" font-family="Times New Roman" font-size="15">1. Jogador abre painel de crafting</text>
+<line x1="460" y1="122" x2="460" y2="152" stroke="#444" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="90" y="152" width="740" height="46" rx="4" fill="#f0efe8" stroke="#333"/>
+<text x="108" y="181" font-family="Times New Roman" font-size="15">2. Sistema lista receitas desbloqueadas pelo inventário atual</text>
+<line x1="460" y1="198" x2="460" y2="228" stroke="#444" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="90" y="228" width="740" height="46" rx="4" fill="#f0efe8" stroke="#333"/>
+<text x="108" y="257" font-family="Times New Roman" font-size="15">3. Jogador seleciona uma receita</text>
+<line x1="460" y1="274" x2="460" y2="304" stroke="#444" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="90" y="304" width="740" height="46" rx="4" fill="#f0efe8" stroke="#333"/>
+<text x="108" y="333" font-family="Times New Roman" font-size="15">4. CraftingSystem valida recursos e bloqueios</text>
+<line x1="460" y1="350" x2="460" y2="380" stroke="#444" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="90" y="380" width="740" height="46" rx="4" fill="#f0efe8" stroke="#333"/>
+<text x="108" y="409" font-family="Times New Roman" font-size="15">5. Recursos são removidos e item produzido é adicionado</text>
+</svg>
